@@ -38,9 +38,7 @@
         <el-form-item label="设备">
           <el-select v-model="filterForm.device" placeholder="请选择设备">
             <el-option label="全部" value=""></el-option>
-            <el-option label="摄像头 1" value="camera1"></el-option>
-            <el-option label="摄像头 2" value="camera2"></el-option>
-            <el-option label="摄像头 3" value="camera3"></el-option>
+            <el-option v-for="d in deviceOptions" :key="d.id" :label="d.name" :value="d.id"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -56,10 +54,11 @@
 
     <div class="data-table">
       <el-table
-        :data="filteredData"
+        :data="historyData"
         style="width: 100%"
         border
         stripe
+        v-loading="loading"
       >
         <el-table-column prop="id" label="ID" width="80"></el-table-column>
         <el-table-column prop="device" label="设备" width="120">
@@ -113,7 +112,7 @@
         v-model:page-size="pageSize"
         :page-sizes="[10, 20, 50, 100]"
         layout="total, sizes, prev, pager, next, jumper"
-        :total="filteredData.length"
+        :total="totalRecords"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
       ></el-pagination>
@@ -177,10 +176,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
-import { useFaceStore } from '../store/modules/faceStore';
+import { faceApi } from '../api/face';
+import { devicesApi } from '../api/devices';
 import { formatTime, formatEmotion } from '../utils/format';
-
-const faceStore = useFaceStore();
 
 const filterForm = reactive({
   dateRange: null,
@@ -190,50 +188,73 @@ const filterForm = reactive({
 
 const currentPage = ref(1);
 const pageSize = ref(10);
+const totalRecords = ref(0);
 const showDetailDialog = ref(false);
 const selectedRecord = ref(null);
+const loading = ref(false);
 
-// 模拟历史数据
+// 历史数据
 const historyData = ref([]);
 
-// 过滤后的数据
-const filteredData = computed(() => {
-  let data = [...historyData.value];
-  
-  // 时间范围过滤
-  if (filterForm.dateRange && filterForm.dateRange.length === 2) {
-    const startDate = new Date(filterForm.dateRange[0]);
-    const endDate = new Date(filterForm.dateRange[1]);
-    data = data.filter(item => {
-      const itemDate = new Date(item.timestamp);
-      return itemDate >= startDate && itemDate <= endDate;
-    });
-  }
-  
-  // 情绪类型过滤
-  if (filterForm.emotion) {
-    data = data.filter(item => item.emotion === filterForm.emotion);
-  }
-  
-  // 设备过滤
-  if (filterForm.device) {
-    data = data.filter(item => item.device === filterForm.device);
-  }
-  
-  return data;
-});
+// 设备列表（从后端获取）
+const deviceOptions = ref([]);
 
-// 分页后的数据
-const paginatedData = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  const end = start + pageSize.value;
-  return filteredData.value.slice(start, end);
-});
+// 加载设备列表
+const loadDevices = async () => {
+  try {
+    const res = await devicesApi.getCameraList();
+    deviceOptions.value = res.data || [];
+  } catch (error) {
+    console.error('加载设备列表失败:', error);
+  }
+};
+
+// 加载历史数据
+const loadHistory = async () => {
+  loading.value = true;
+  try {
+    const params = {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+    };
+    if (filterForm.dateRange && filterForm.dateRange.length === 2) {
+      params.startDate = new Date(filterForm.dateRange[0]).toISOString();
+      params.endDate = new Date(filterForm.dateRange[1] + ' 23:59:59').toISOString();
+    }
+    if (filterForm.emotion) {
+      params.emotion = filterForm.emotion;
+    }
+    if (filterForm.device) {
+      params.device = filterForm.device;
+    }
+
+    const res = await faceApi.getEmotionHistory(params);
+    const items = res.data.list || [];
+    totalRecords.value = res.data.total || 0;
+
+    historyData.value = items.map(item => ({
+      id: item.id,
+      device: item.camera_id,
+      timestamp: item.timestamp,
+      emotion: item.dominant_emotion,
+      confidence: item.confidence ? Math.round(item.confidence * 100) : 0,
+      valence: item.valence,
+      arousal: item.arousal,
+      pleasure: item.pleasure,
+      pad_arousal: item.pad_arousal,
+      dominance: item.dominance,
+    }));
+  } catch (error) {
+    console.error('加载历史数据失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
 
 // 搜索数据
 const searchData = () => {
-  // 实际项目中这里会调用API获取数据
-  console.log('搜索条件:', filterForm);
+  currentPage.value = 1;
+  loadHistory();
 };
 
 // 重置筛选
@@ -241,13 +262,31 @@ const resetFilter = () => {
   filterForm.dateRange = null;
   filterForm.emotion = '';
   filterForm.device = '';
+  currentPage.value = 1;
+  loadHistory();
 };
 
 // 导出数据
-const exportData = () => {
-  // 实际项目中这里会调用API导出数据
-  console.log('导出数据');
-  ElMessage.success('数据导出成功');
+const exportData = async () => {
+  try {
+    const params = { format: 'json' };
+    if (filterForm.dateRange && filterForm.dateRange.length === 2) {
+      params.startDate = new Date(filterForm.dateRange[0]).toISOString();
+      params.endDate = new Date(filterForm.dateRange[1] + ' 23:59:59').toISOString();
+    }
+    const res = await faceApi.getEmotionHistory({ ...params, page: 1, pageSize: 10000 });
+    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `emotion_history_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success('数据导出成功');
+  } catch (error) {
+    console.error('导出失败:', error);
+    ElMessage.error('导出失败');
+  }
 };
 
 // 查看详情
@@ -265,29 +304,26 @@ const deleteRecord = (id) => {
   }).then(() => {
     historyData.value = historyData.value.filter(item => item.id !== id);
     ElMessage.success('删除成功');
-  }).catch(() => {
-    // 取消删除
-  });
+  }).catch(() => {});
 };
 
 // 处理分页大小变化
 const handleSizeChange = (size) => {
   pageSize.value = size;
+  currentPage.value = 1;
+  loadHistory();
 };
 
 // 处理分页页码变化
 const handleCurrentChange = (current) => {
   currentPage.value = current;
+  loadHistory();
 };
 
 // 获取设备名称
 const getDeviceName = (deviceId) => {
-  const deviceMap = {
-    'camera1': '摄像头 1',
-    'camera2': '摄像头 2',
-    'camera3': '摄像头 3'
-  };
-  return deviceMap[deviceId] || deviceId;
+  const device = deviceOptions.value.find(d => d.id === deviceId);
+  return device ? device.name : deviceId;
 };
 
 // 获取情绪名称
@@ -295,37 +331,9 @@ const getEmotionName = (emotion) => {
   return formatEmotion(emotion);
 };
 
-// 生成模拟数据
-const generateMockData = () => {
-  const emotions = ['neutral', 'happy', 'sad', 'angry', 'fearful', 'disgusted', 'surprised', 'contempt'];
-  const devices = ['camera1', 'camera2', 'camera3'];
-  const data = [];
-
-  for (let i = 1; i <= 100; i++) {
-    const emotion = emotions[Math.floor(Math.random() * emotions.length)];
-    const valence = parseFloat((Math.random() * 2 - 1).toFixed(4));
-    const arousal = parseFloat((Math.random() * 2 - 1).toFixed(4));
-    data.push({
-      id: i,
-      device: devices[Math.floor(Math.random() * devices.length)],
-      timestamp: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000),
-      emotion: emotion,
-      confidence: Math.round(Math.random() * 20) + 80,
-      valence: valence,
-      arousal: arousal,
-      pleasure: valence,
-      pad_arousal: arousal,
-      dominance: parseFloat((Math.random() * 2 - 1).toFixed(4))
-    });
-  }
-  
-  // 按时间排序
-  data.sort((a, b) => b.timestamp - a.timestamp);
-  historyData.value = data;
-};
-
 onMounted(() => {
-  generateMockData();
+  loadDevices();
+  loadHistory();
 });
 </script>
 

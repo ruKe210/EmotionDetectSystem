@@ -141,11 +141,15 @@
             <input type="email" class="form-control" v-model="newUser.email" placeholder="请输入邮箱" />
           </div>
           <div class="form-group">
+            <label>密码</label>
+            <input type="password" class="form-control" v-model="newUser.password" placeholder="请输入密码" />
+          </div>
+          <div class="form-group">
             <label>角色</label>
             <select class="form-control" v-model="newUser.role">
-              <option value="管理员">管理员</option>
-              <option value="操作员">操作员</option>
-              <option value="查看员">查看员</option>
+              <option value="admin">管理员</option>
+              <option value="user">操作员</option>
+              <option value="viewer">查看员</option>
             </select>
           </div>
         </div>
@@ -159,65 +163,151 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { usersApi } from '../api/users';
 
 const searchText = ref('');
 const activeStatus = ref('all');
 const showAddModal = ref(false);
+const loading = ref(false);
 
 const statusTabs = [
   { label: '全部', value: 'all' },
-  { label: '激活', value: '激活' },
-  { label: '已禁用', value: '禁用' },
+  { label: '激活', value: 'active' },
+  { label: '已禁用', value: 'disabled' },
 ];
 
-const users = ref([
-  { id: 1, name: '系统管理员', username: 'admin', role: '管理员', roleCls: 'admin', email: 'admin@example.com', status: '激活', lastLogin: '刚刚', gradient: 'linear-gradient(135deg, #6c8ef0, #a29bfe)' },
-  { id: 2, name: '张操作员', username: 'operator', role: '操作员', roleCls: 'operator', email: 'operator@example.com', status: '激活', lastLogin: '2小时前', gradient: 'linear-gradient(135deg, #00cec9, #00b894)' },
-  { id: 3, name: '李查看员', username: 'viewer', role: '查看员', roleCls: 'viewer', email: 'viewer@example.com', status: '激活', lastLogin: '昨天', gradient: 'linear-gradient(135deg, #fdcb6e, #e17055)' },
-  { id: 4, name: '王测试员', username: 'tester', role: '操作员', roleCls: 'operator', email: 'tester@example.com', status: '禁用', lastLogin: '3天前', gradient: 'linear-gradient(135deg, #fd79a8, #e84393)' },
-]);
+const roleNameMap = { admin: '管理员', user: '操作员', viewer: '查看员' };
+const roleClsMap = { admin: 'admin', user: 'operator', viewer: 'viewer' };
+const gradientMap = {
+  admin: 'linear-gradient(135deg, #6c8ef0, #a29bfe)',
+  user: 'linear-gradient(135deg, #00cec9, #00b894)',
+  viewer: 'linear-gradient(135deg, #fdcb6e, #e17055)',
+};
 
-const newUser = ref({ name: '', username: '', email: '', role: '查看员' });
+const users = ref([]);
 
-const activeCount = computed(() => users.value.filter(u => u.status === '激活').length);
+const newUser = ref({ name: '', username: '', email: '', password: '', role: 'user' });
+
+const loadUsers = async () => {
+  loading.value = true;
+  try {
+    const params = { page: 1, pageSize: 100 };
+    if (searchText.value) params.search = searchText.value;
+    if (activeStatus.value !== 'all') params.status = activeStatus.value;
+
+    const res = await usersApi.getUsers(params);
+    const items = res.data.list || [];
+    users.value = items.map(u => ({
+      id: u.id,
+      name: u.name,
+      username: u.username,
+      role: roleNameMap[u.role] || u.role,
+      rawRole: u.role,
+      roleCls: roleClsMap[u.role] || 'viewer',
+      email: u.email || '',
+      status: u.status === 'active' ? '激活' : '禁用',
+      rawStatus: u.status,
+      lastLogin: u.updated_at ? formatRelativeTime(u.updated_at) : formatRelativeTime(u.created_at),
+      gradient: gradientMap[u.role] || 'linear-gradient(135deg, #a29bfe, #6c8ef0)',
+    }));
+  } catch (error) {
+    console.error('加载用户列表失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const formatRelativeTime = (timeStr) => {
+  if (!timeStr) return '未知';
+  const date = new Date(timeStr);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return `${Math.floor(diff / 86400)}天前`;
+};
+
+const activeCount = computed(() => users.value.filter(u => u.rawStatus === 'active').length);
 
 const roleStats = computed(() => [
-  { name: '管理员', initial: 'A', count: users.value.filter(u => u.role === '管理员').length, cls: 'admin', gradient: 'linear-gradient(135deg, #6c8ef0, #a29bfe)', permission: '全部权限' },
-  { name: '操作员', initial: 'O', count: users.value.filter(u => u.role === '操作员').length, cls: 'operator', gradient: 'linear-gradient(135deg, #00cec9, #00b894)', permission: '操作权限' },
-  { name: '查看员', initial: 'V', count: users.value.filter(u => u.role === '查看员').length, cls: 'viewer', gradient: 'linear-gradient(135deg, #fdcb6e, #e17055)', permission: '只读权限' },
+  { name: '管理员', initial: 'A', count: users.value.filter(u => u.rawRole === 'admin').length, cls: 'admin', gradient: 'linear-gradient(135deg, #6c8ef0, #a29bfe)', permission: '全部权限' },
+  { name: '操作员', initial: 'O', count: users.value.filter(u => u.rawRole === 'user').length, cls: 'operator', gradient: 'linear-gradient(135deg, #00cec9, #00b894)', permission: '操作权限' },
+  { name: '查看员', initial: 'V', count: users.value.filter(u => u.rawRole === 'viewer').length, cls: 'viewer', gradient: 'linear-gradient(135deg, #fdcb6e, #e17055)', permission: '只读权限' },
 ]);
 
 const filteredUsers = computed(() => {
   return users.value.filter(u => {
-    if (activeStatus.value !== 'all' && u.status !== activeStatus.value) return false;
     if (searchText.value && !u.name.includes(searchText.value) && !u.username.includes(searchText.value)) return false;
     return true;
   });
 });
 
 const editUser = (user) => console.log('edit', user);
-const toggleUser = (user) => { user.status = user.status === '激活' ? '禁用' : '激活'; };
-const deleteUser = (user) => {
-  const idx = users.value.findIndex(u => u.id === user.id);
-  if (idx > -1) users.value.splice(idx, 1);
+
+const toggleUser = async (user) => {
+  try {
+    const newStatus = user.rawStatus === 'active' ? 'disabled' : 'active';
+    await usersApi.updateUserStatus(user.id, newStatus);
+    user.rawStatus = newStatus;
+    user.status = newStatus === 'active' ? '激活' : '禁用';
+    ElMessage.success('状态更新成功');
+  } catch (error) {
+    console.error('更新状态失败:', error);
+    ElMessage.error('操作失败');
+  }
 };
-const addUser = () => {
-  if (!newUser.value.name || !newUser.value.username) return;
-  users.value.push({
-    id: users.value.length + 1,
-    name: newUser.value.name,
-    username: newUser.value.username,
-    role: newUser.value.role,
-    roleCls: newUser.value.role === '管理员' ? 'admin' : newUser.value.role === '操作员' ? 'operator' : 'viewer',
-    email: newUser.value.email,
-    status: '激活',
-    lastLogin: '刚刚',
-    gradient: 'linear-gradient(135deg, #a29bfe, #6c8ef0)',
-  });
-  newUser.value = { name: '', username: '', email: '', role: '查看员' };
-  showAddModal.value = false;
+
+const deleteUser = async (user) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除用户 ${user.name} 吗？`, '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+    await usersApi.deleteUser(user.id);
+    users.value = users.value.filter(u => u.id !== user.id);
+    ElMessage.success('删除成功');
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除用户失败:', error);
+      ElMessage.error(error.message || '删除失败');
+    }
+  }
 };
+
+const addUser = async () => {
+  if (!newUser.value.name || !newUser.value.username || !newUser.value.password) {
+    ElMessage.warning('请填写完整信息');
+    return;
+  }
+  try {
+    await usersApi.createUser({
+      username: newUser.value.username,
+      password: newUser.value.password,
+      name: newUser.value.name,
+      email: newUser.value.email,
+      role: newUser.value.role,
+    });
+    ElMessage.success('创建成功');
+    newUser.value = { name: '', username: '', email: '', password: '', role: 'user' };
+    showAddModal.value = false;
+    loadUsers();
+  } catch (error) {
+    console.error('创建用户失败:', error);
+    ElMessage.error(error.message || '创建失败');
+  }
+};
+
+import { watch } from 'vue';
+watch(activeStatus, () => {
+  loadUsers();
+});
+
+onMounted(() => {
+  loadUsers();
+});
 </script>
 
 <style scoped>

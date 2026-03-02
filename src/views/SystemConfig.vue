@@ -158,7 +158,8 @@
 import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { getCameras, updateSystemConfig } from '../api/common';
+import { devicesApi } from '../api/devices';
+import service from '../api/request';
 
 const router = useRouter();
 const activeTab = ref('video');
@@ -197,9 +198,9 @@ const permissionConfig = reactive({
 // 获取摄像头列表
 const loadCameras = async () => {
   try {
-    const response = await getCameras();
+    const response = await devicesApi.getCameraList();
     cameras.value = response.data || [];
-    if (cameras.value.length > 0) {
+    if (cameras.value.length > 0 && !videoConfig.cameraId) {
       videoConfig.cameraId = cameras.value[0].id;
     }
   } catch (error) {
@@ -208,17 +209,31 @@ const loadCameras = async () => {
   }
 };
 
+// 加载系统配置
+const loadConfig = async () => {
+  try {
+    const response = await service.get('/config');
+    const data = response.data || {};
+    if (data.video) Object.assign(videoConfig, data.video);
+    if (data.recognition) Object.assign(recognitionConfig, data.recognition);
+    if (data.storage) Object.assign(storageConfig, data.storage);
+    if (data.permission) Object.assign(permissionConfig, data.permission);
+  } catch (error) {
+    console.error('加载配置失败:', error);
+  }
+};
+
 // 保存配置
 const saveConfig = async () => {
   try {
     const config = {
-      video: videoConfig,
-      recognition: recognitionConfig,
-      storage: storageConfig,
-      permission: permissionConfig
+      video: { ...videoConfig },
+      recognition: { ...recognitionConfig },
+      storage: { ...storageConfig },
+      permission: { ...permissionConfig }
     };
-    
-    await updateSystemConfig(config);
+
+    await service.post('/config', config);
     ElMessage.success('配置保存成功');
   } catch (error) {
     ElMessage.error('配置保存失败');
@@ -228,31 +243,28 @@ const saveConfig = async () => {
 
 // 重置配置
 const resetConfig = () => {
-  // 重置视频配置
   videoConfig.cameraId = cameras.value.length > 0 ? cameras.value[0].id : '';
   videoConfig.resolution = '480p';
   videoConfig.fps = 15;
   videoConfig.duration = 10;
-  
-  // 重置识别配置
+
   recognitionConfig.modelType = 'discrete';
   recognitionConfig.delayThreshold = 200;
   recognitionConfig.accuracyThreshold = 0.7;
   recognitionConfig.emotionChangeThreshold = 0.2;
-  
-  // 重置存储配置
+
   storageConfig.path = './data';
   storageConfig.period = 30;
   storageConfig.autoBackup = true;
   storageConfig.backupFrequency = 'weekly';
-  
-  // 重置权限配置
+
   permissionConfig.role = 'admin';
   permissionConfig.permissions = ['参数配置', '数据导出', '告警处理', '设备管理', '用户管理'];
 };
 
 onMounted(() => {
   loadCameras();
+  loadConfig();
 });
 </script>
 

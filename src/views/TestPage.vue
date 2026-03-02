@@ -5,7 +5,7 @@
       <div class="welcome-left">
         <div class="welcome-icon">🌸</div>
         <div>
-          <div class="welcome-title">欢迎回来，管理员</div>
+          <div class="welcome-title">欢迎回来，{{ welcomeName }}</div>
           <div class="welcome-sub">{{ todayStr }} · 今天也是美好的一天</div>
         </div>
       </div>
@@ -173,6 +173,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { faceApi } from '../api/face';
+import { alertsApi } from '../api/alerts';
+import { reportsApi } from '../api/reports';
+import { useSystemStore } from '../store/modules/systemStore';
+
+const systemStore = useSystemStore();
 
 const today = new Date();
 const todayStr = computed(() => {
@@ -180,13 +186,15 @@ const todayStr = computed(() => {
   return `${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日 ${days[today.getDay()]}`;
 });
 
+const welcomeName = computed(() => systemStore.user.name || '管理员');
+
 const stats = ref([
   {
     key: 'devices',
     label: '在线设备',
-    value: '2 / 3',
+    value: '- / -',
     valueClass: 'value-primary',
-    trend: '较昨日持平',
+    trend: '加载中...',
     trendType: 'neutral',
     gradient: 'linear-gradient(135deg, #6c8ef0, #a29bfe)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
@@ -198,10 +206,10 @@ const stats = ref([
   {
     key: 'recognition',
     label: '今日识别',
-    value: '1,248',
+    value: '-',
     valueClass: 'value-mint',
-    trend: '↑ 12% 较昨日',
-    trendType: 'up',
+    trend: '加载中...',
+    trendType: 'neutral',
     gradient: 'linear-gradient(135deg, #00cec9, #00b894)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
       <circle cx="12" cy="8" r="4"/>
@@ -211,10 +219,10 @@ const stats = ref([
   {
     key: 'alerts',
     label: '今日告警',
-    value: '3',
+    value: '-',
     valueClass: 'value-pink',
-    trend: '↓ 2 较昨日',
-    trendType: 'down',
+    trend: '加载中...',
+    trendType: 'neutral',
     gradient: 'linear-gradient(135deg, #fd79a8, #e84393)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -224,10 +232,10 @@ const stats = ref([
   {
     key: 'accuracy',
     label: '识别准确率',
-    value: '94.6%',
+    value: '-',
     valueClass: 'value-yellow',
-    trend: '↑ 0.8% 较上周',
-    trendType: 'up',
+    trend: '加载中...',
+    trendType: 'neutral',
     gradient: 'linear-gradient(135deg, #fdcb6e, #e17055)',
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
       <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -235,36 +243,150 @@ const stats = ref([
   }
 ]);
 
-const cameras = ref([
-  { id: 1, name: '摄像头 1', status: 'online', emotion: '😊 快乐', emotionClass: 'happy' },
-  { id: 2, name: '摄像头 2', status: 'online', emotion: '😐 中性', emotionClass: 'neutral' },
-  { id: 3, name: '摄像头 3', status: 'offline', emotion: '离线', emotionClass: '' },
-]);
+const cameras = ref([]);
 
-const emotions = ref([
-  { name: '快乐', emoji: '😊', pct: 42, color: 'linear-gradient(90deg, #fdcb6e, #e17055)' },
-  { name: '中性', emoji: '😐', pct: 28, color: 'linear-gradient(90deg, #74b9ff, #6c8ef0)' },
-  { name: '悲伤', emoji: '😢', pct: 12, color: 'linear-gradient(90deg, #a29bfe, #6c8ef0)' },
-  { name: '愤怒', emoji: '😠', pct: 8, color: 'linear-gradient(90deg, #fd79a8, #e84393)' },
-  { name: '惊讶', emoji: '😲', pct: 6, color: 'linear-gradient(90deg, #00cec9, #00b894)' },
-  { name: '恐惧', emoji: '😨', pct: 4, color: 'linear-gradient(90deg, #b2bec3, #636e72)' },
-]);
+const emotionNameMap = {
+  happy: '快乐', sad: '悲伤', angry: '愤怒', neutral: '中性',
+  fearful: '恐惧', surprised: '惊讶', disgusted: '厌恶', contempt: '蔑视'
+};
+const emotionEmojiMap = {
+  happy: '😊', sad: '😢', angry: '😠', neutral: '😐',
+  fearful: '😨', surprised: '😲', disgusted: '🤢', contempt: '😏'
+};
+const emotionColorMap = {
+  happy: 'linear-gradient(90deg, #fdcb6e, #e17055)',
+  neutral: 'linear-gradient(90deg, #74b9ff, #6c8ef0)',
+  sad: 'linear-gradient(90deg, #a29bfe, #6c8ef0)',
+  angry: 'linear-gradient(90deg, #fd79a8, #e84393)',
+  surprised: 'linear-gradient(90deg, #00cec9, #00b894)',
+  fearful: 'linear-gradient(90deg, #b2bec3, #636e72)',
+  disgusted: 'linear-gradient(90deg, #a29bfe, #6c5ce7)',
+  contempt: 'linear-gradient(90deg, #dfe6e9, #b2bec3)',
+};
 
-const recentAlerts = ref([
-  { id: 1, title: '检测到异常情绪：愤怒', device: '摄像头1', time: '14:30', level: 'high', status: '未处理', badgeClass: 'badge-danger' },
-  { id: 2, title: '检测到持续负面情绪', device: '摄像头2', time: '13:45', level: 'mid', status: '处理中', badgeClass: 'badge-warning' },
-  { id: 3, title: '识别置信度偏低', device: '摄像头1', time: '12:20', level: 'low', status: '已处理', badgeClass: 'badge-success' },
-]);
+const emotions = ref([]);
 
-const trendData = ref([
-  { label: '8时', value: 45, height: 30, color: 'linear-gradient(to top, #6c8ef0, #a29bfe)' },
-  { label: '9时', value: 80, height: 53, color: 'linear-gradient(to top, #6c8ef0, #a29bfe)' },
-  { label: '10时', value: 120, height: 80, color: 'linear-gradient(to top, #00cec9, #00b894)' },
-  { label: '11时', value: 150, height: 100, color: 'linear-gradient(to top, #00cec9, #00b894)' },
-  { label: '12时', value: 90, height: 60, color: 'linear-gradient(to top, #fdcb6e, #e17055)' },
-  { label: '13时', value: 110, height: 73, color: 'linear-gradient(to top, #6c8ef0, #a29bfe)' },
-  { label: '14时', value: 135, height: 90, color: 'linear-gradient(to top, #00cec9, #00b894)' },
-]);
+const recentAlerts = ref([]);
+
+const trendData = ref([]);
+
+const levelMap = { danger: 'high', warning: 'mid', info: 'low' };
+const statusTextMap = { pending: '未处理', handled: '已处理', ignored: '已忽略' };
+const badgeClassMap = { pending: 'badge-danger', handled: 'badge-success', ignored: 'badge-warning' };
+
+// 加载统计数据
+const loadStats = async () => {
+  try {
+    const res = await faceApi.getGlobalStats();
+    const data = res.data;
+
+    stats.value[0].value = `${data.online_devices} / ${data.online_devices + (3 - data.online_devices)}`;
+    stats.value[0].trend = data.online_devices > 0 ? '设备运行正常' : '无在线设备';
+    stats.value[0].trendType = data.online_devices > 0 ? 'up' : 'down';
+
+    stats.value[1].value = data.today_recognition.toLocaleString();
+    stats.value[1].trend = `今日已识别 ${data.today_recognition} 次`;
+    stats.value[1].trendType = data.today_recognition > 0 ? 'up' : 'neutral';
+
+    stats.value[2].value = String(data.today_alerts);
+    stats.value[2].trend = data.today_alerts > 0 ? `${data.today_alerts} 条待处理` : '暂无告警';
+    stats.value[2].trendType = data.today_alerts > 0 ? 'up' : 'down';
+
+    // 处理情绪分布
+    const dist = data.emotion_distribution || {};
+    const total = Object.values(dist).reduce((a, b) => a + b, 0) || 1;
+    const emList = [];
+    for (const [key, count] of Object.entries(dist)) {
+      const pct = Math.round(count / total * 100);
+      if (pct > 0 || ['happy', 'neutral', 'sad', 'angry', 'surprised', 'fearful'].includes(key)) {
+        emList.push({
+          name: emotionNameMap[key] || key,
+          emoji: emotionEmojiMap[key] || '😶',
+          pct: pct,
+          color: emotionColorMap[key] || 'linear-gradient(90deg, #b2bec3, #636e72)',
+        });
+      }
+    }
+    emList.sort((a, b) => b.pct - a.pct);
+    emotions.value = emList.length > 0 ? emList : [
+      { name: '中性', emoji: '😐', pct: 0, color: emotionColorMap.neutral },
+    ];
+
+    // 处理摄像头列表
+    cameras.value = [
+      { id: 1, name: '摄像头 1', status: data.online_devices >= 1 ? 'online' : 'offline', emotion: data.online_devices >= 1 ? '😊 检测中' : '离线', emotionClass: data.online_devices >= 1 ? 'happy' : '' },
+      { id: 2, name: '摄像头 2', status: data.online_devices >= 2 ? 'online' : 'offline', emotion: data.online_devices >= 2 ? '😐 检测中' : '离线', emotionClass: data.online_devices >= 2 ? 'neutral' : '' },
+      { id: 3, name: '摄像头 3', status: data.online_devices >= 3 ? 'online' : 'offline', emotion: data.online_devices >= 3 ? '😊 检测中' : '离线', emotionClass: '' },
+    ];
+  } catch (error) {
+    console.error('加载统计数据失败:', error);
+  }
+};
+
+// 加载准确率
+const loadAccuracy = async () => {
+  try {
+    const res = await reportsApi.getSummary({ reportType: 'daily' });
+    const data = res.data;
+    const accuracy = data.accuracy ? (data.accuracy * 100).toFixed(1) : '0';
+    stats.value[3].value = accuracy + '%';
+    stats.value[3].trend = `主要情绪: ${emotionNameMap[data.dominantEmotion] || data.dominantEmotion}`;
+    stats.value[3].trendType = 'up';
+  } catch (error) {
+    console.error('加载准确率失败:', error);
+  }
+};
+
+// 加载最近告警
+const loadAlerts = async () => {
+  try {
+    const res = await alertsApi.getAlerts({ page: 1, pageSize: 3 });
+    const items = res.data.list || [];
+    recentAlerts.value = items.map(a => ({
+      id: a.id,
+      title: a.title,
+      device: a.device || '未知设备',
+      time: new Date(a.time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      level: levelMap[a.level] || 'low',
+      status: statusTextMap[a.status] || a.status,
+      badgeClass: badgeClassMap[a.status] || 'badge-warning',
+    }));
+  } catch (error) {
+    console.error('加载告警失败:', error);
+  }
+};
+
+// 加载趋势数据
+const loadTrend = async () => {
+  try {
+    const res = await reportsApi.getHourlyStats();
+    const items = res.data || [];
+    const maxCount = Math.max(...items.map(i => i.count), 1);
+    const colors = [
+      'linear-gradient(to top, #6c8ef0, #a29bfe)',
+      'linear-gradient(to top, #00cec9, #00b894)',
+      'linear-gradient(to top, #fdcb6e, #e17055)',
+    ];
+    // 取 8-16 时间段
+    trendData.value = items
+      .filter(i => parseInt(i.hour) >= 8 && parseInt(i.hour) <= 16)
+      .map((i, idx) => ({
+        label: i.hour + '时',
+        value: i.count,
+        height: Math.max(5, Math.round(i.count / maxCount * 100)),
+        color: colors[idx % colors.length],
+      }));
+  } catch (error) {
+    console.error('加载趋势数据失败:', error);
+  }
+};
+
+onMounted(() => {
+  loadStats();
+  loadAccuracy();
+  loadAlerts();
+  loadTrend();
+});
 </script>
 
 <style scoped>

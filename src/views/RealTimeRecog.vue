@@ -341,21 +341,23 @@ onMounted(async () => {
 
 .page-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  color: #2d3436;
+  font-size: 22px;
+  font-weight: 600;
+  color: #3d4852;
   display: flex;
   align-items: center;
   gap: 12px;
+  letter-spacing: -0.5px;
 }
 
 .page-header h2::before {
   content: '';
   width: 4px;
-  height: 24px;
+  height: 28px;
   background: linear-gradient(135deg, var(--mint), var(--primary));
   border-radius: 4px;
   display: inline-block;
+  box-shadow: 0 2px 8px rgba(95, 212, 200, 0.3);
 }
 
 .header-actions {

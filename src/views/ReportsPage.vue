@@ -61,9 +61,7 @@
             <label>设备选择</label>
             <select class="form-control" v-model="selectedDevice">
               <option value="">所有设备</option>
-              <option value="cam1">摄像头 1</option>
-              <option value="cam2">摄像头 2</option>
-              <option value="cam3">摄像头 3</option>
+              <option v-for="d in deviceOptions" :key="d.id" :value="d.id">{{ d.name }}</option>
             </select>
           </div>
         </div>
@@ -114,7 +112,7 @@
                 />
               </svg>
               <div class="donut-center">
-                <div class="donut-total">1,248</div>
+                <div class="donut-total">{{ totalRecognition.toLocaleString() }}</div>
                 <div class="donut-sub">次识别</div>
               </div>
             </div>
@@ -207,45 +205,171 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { reportsApi } from '../api/reports';
+import { devicesApi } from '../api/devices';
 
 const reportType = ref('daily');
-const startDate = ref('2026-02-20');
-const endDate = ref('2026-02-26');
+const startDate = ref('');
+const endDate = ref('');
 const selectedDevice = ref('');
+const deviceOptions = ref([]);
+
+const emotionNameMap = {
+  happy: '快乐', sad: '悲伤', angry: '愤怒', neutral: '中性',
+  fearful: '恐惧', surprised: '惊讶', disgusted: '厌恶', contempt: '蔑视'
+};
+const emotionEmojiMap = {
+  happy: '😊', sad: '😢', angry: '😠', neutral: '😐',
+  fearful: '😨', surprised: '😲', disgusted: '🤢', contempt: '😏'
+};
+const emotionColorMap = {
+  happy: '#fdcb6e', neutral: '#74b9ff', sad: '#a29bfe',
+  angry: '#fd79a8', surprised: '#00cec9', fearful: '#b2bec3',
+  disgusted: '#6c5ce7', contempt: '#dfe6e9',
+};
 
 const reportTypes = [
   { label: '日报表', value: 'daily' },
   { label: '周报表', value: 'weekly' },
   { label: '月报表', value: 'monthly' },
-  { label: '年报表', value: 'yearly' },
 ];
 
 const summaryData = ref([
-  { key: 'total', label: '总识别次数', value: '1,248', change: '↑ 12.4%', changeType: 'up', cls: 'primary', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>` },
-  { key: 'accuracy', label: '平均准确率', value: '94.6%', change: '↑ 0.8%', changeType: 'up', cls: 'mint', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` },
-  { key: 'alerts', label: '告警次数', value: '3', change: '↓ 40%', changeType: 'down', cls: 'pink', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` },
-  { key: 'dominant', label: '主导情绪', value: '😊 快乐', change: '42% 占比', changeType: 'neutral', cls: 'yellow', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>` },
+  { key: 'total', label: '总识别次数', value: '-', change: '加载中...', changeType: 'neutral', cls: 'primary', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>` },
+  { key: 'accuracy', label: '平均准确率', value: '-', change: '加载中...', changeType: 'neutral', cls: 'mint', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` },
+  { key: 'alerts', label: '告警次数', value: '-', change: '加载中...', changeType: 'neutral', cls: 'pink', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` },
+  { key: 'dominant', label: '主导情绪', value: '-', change: '加载中...', changeType: 'neutral', cls: 'yellow', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>` },
 ]);
 
-const emotionData = [
-  { name: '快乐', emoji: '😊', pct: 42, color: '#fdcb6e' },
-  { name: '中性', emoji: '😐', pct: 28, color: '#74b9ff' },
-  { name: '悲伤', emoji: '😢', pct: 12, color: '#a29bfe' },
-  { name: '愤怒', emoji: '😠', pct: 8, color: '#fd79a8' },
-  { name: '惊讶', emoji: '😲', pct: 6, color: '#00cec9' },
-  { name: '恐惧', emoji: '😨', pct: 4, color: '#b2bec3' },
-];
+const emotionData = ref([]);
+const totalRecognition = ref(0);
 
-// 甜甜圈图数据
+const hourlyData = ref([]);
+const maxHourly = computed(() => Math.max(...hourlyData.value.map(d => d.value), 1));
+
+const weekDays = ref([]);
+const weekData = ref([]);
+const alertDataWeek = ref([]);
+
+// 加载设备列表
+const loadDevices = async () => {
+  try {
+    const res = await devicesApi.getCameraList();
+    deviceOptions.value = res.data || [];
+  } catch (error) {
+    console.error('加载设备列表失败:', error);
+  }
+};
+
+// 加载摘要数据
+const loadSummary = async () => {
+  try {
+    const params = { reportType: reportType.value };
+    if (startDate.value) params.startDate = startDate.value;
+    if (endDate.value) params.endDate = endDate.value;
+    if (selectedDevice.value) params.device = selectedDevice.value;
+
+    const res = await reportsApi.getSummary(params);
+    const data = res.data;
+
+    summaryData.value[0].value = data.total.toLocaleString();
+    summaryData.value[0].change = `共 ${data.total} 次识别`;
+    summaryData.value[0].changeType = 'up';
+    totalRecognition.value = data.total;
+
+    const accuracy = data.accuracy ? (data.accuracy * 100).toFixed(1) : '0';
+    summaryData.value[1].value = accuracy + '%';
+    summaryData.value[1].change = '平均置信度';
+    summaryData.value[1].changeType = 'up';
+
+    summaryData.value[2].value = String(data.alerts);
+    summaryData.value[2].change = data.alerts > 0 ? `${data.alerts} 条告警` : '无告警';
+    summaryData.value[2].changeType = data.alerts > 0 ? 'up' : 'down';
+
+    const dominant = data.dominantEmotion || 'neutral';
+    summaryData.value[3].value = `${emotionEmojiMap[dominant] || '😶'} ${emotionNameMap[dominant] || dominant}`;
+    summaryData.value[3].change = '最常见情绪';
+    summaryData.value[3].changeType = 'neutral';
+  } catch (error) {
+    console.error('加载摘要失败:', error);
+  }
+};
+
+// 加载情绪分布
+const loadEmotionDistribution = async () => {
+  try {
+    const params = {};
+    if (startDate.value) params.startDate = startDate.value;
+    if (endDate.value) params.endDate = endDate.value;
+    if (selectedDevice.value) params.device = selectedDevice.value;
+
+    const res = await reportsApi.getEmotionDistribution(params);
+    const items = res.data || [];
+    emotionData.value = items.map(item => ({
+      name: emotionNameMap[item.emotion] || item.emotion,
+      emoji: emotionEmojiMap[item.emotion] || '😶',
+      pct: item.pct,
+      color: emotionColorMap[item.emotion] || '#b2bec3',
+    }));
+  } catch (error) {
+    console.error('加载情绪分布失败:', error);
+  }
+};
+
+// 加载每小时统计
+const loadHourly = async () => {
+  try {
+    const params = {};
+    if (selectedDevice.value) params.device = selectedDevice.value;
+    const res = await reportsApi.getHourlyStats(params);
+    const items = res.data || [];
+    const colors = [
+      'linear-gradient(to top, #6c8ef0, #a29bfe)',
+      'linear-gradient(to top, #00cec9, #6c8ef0)',
+      'linear-gradient(to top, #fdcb6e, #e17055)',
+    ];
+    hourlyData.value = items
+      .filter(i => parseInt(i.hour) >= 8 && parseInt(i.hour) <= 18)
+      .map((i, idx) => ({
+        hour: i.hour + '时',
+        value: i.count,
+        color: colors[idx % colors.length],
+      }));
+  } catch (error) {
+    console.error('加载每小时统计失败:', error);
+  }
+};
+
+// 加载趋势
+const loadTrend = async () => {
+  try {
+    const params = { days: 7 };
+    if (selectedDevice.value) params.device = selectedDevice.value;
+    const res = await reportsApi.getTrend(params);
+    const data = res.data;
+
+    weekDays.value = (data.dates || []).map(d => {
+      const date = new Date(d);
+      const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      return days[date.getDay()];
+    });
+    weekData.value = data.total || [];
+    alertDataWeek.value = data.alerts || [];
+  } catch (error) {
+    console.error('加载趋势失败:', error);
+  }
+};
+
+// 甜甜圈图
 const circumference = 2 * Math.PI * 80;
 const donutSegments = computed(() => {
   let offset = 0;
-  return emotionData.map(em => {
+  return emotionData.value.map(em => {
     const dashLength = (em.pct / 100) * circumference;
     const seg = {
       color: em.color,
-      dash: `${dashLength - 4} ${circumference - dashLength + 4}`,
+      dash: `${Math.max(dashLength - 4, 0)} ${circumference - Math.max(dashLength - 4, 0)}`,
       offset: -(offset - circumference / 4)
     };
     offset += dashLength;
@@ -253,27 +377,15 @@ const donutSegments = computed(() => {
   });
 });
 
-const hourlyData = [
-  { hour: '8时', value: 45, color: 'linear-gradient(to top, #6c8ef0, #a29bfe)' },
-  { hour: '9时', value: 80, color: 'linear-gradient(to top, #6c8ef0, #a29bfe)' },
-  { hour: '10时', value: 120, color: 'linear-gradient(to top, #00cec9, #6c8ef0)' },
-  { hour: '11时', value: 150, color: 'linear-gradient(to top, #00cec9, #6c8ef0)' },
-  { hour: '12时', value: 90, color: 'linear-gradient(to top, #fdcb6e, #e17055)' },
-  { hour: '13时', value: 110, color: 'linear-gradient(to top, #6c8ef0, #a29bfe)' },
-  { hour: '14时', value: 135, color: 'linear-gradient(to top, #00cec9, #6c8ef0)' },
-  { hour: '15时', value: 160, color: 'linear-gradient(to top, #00cec9, #6c8ef0)' },
-];
-
-const maxHourly = computed(() => Math.max(...hourlyData.map(d => d.value)));
-
-const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-const weekData = [850, 920, 780, 1100, 1248, 960, 1050];
-const alertDataWeek = [5, 3, 8, 2, 3, 4, 2];
+// 折线图
+const maxWeekData = computed(() => Math.max(...weekData.value, 1));
 
 const linePointsArr = computed(() => {
-  return weekData.map((v, i) => ({
-    x: i * (600 / 6) + 50,
-    y: 180 - (v / 1300 * 160)
+  if (weekData.value.length === 0) return [];
+  const spacing = 600 / Math.max(weekData.value.length - 1, 1);
+  return weekData.value.map((v, i) => ({
+    x: i * spacing + 30,
+    y: 180 - (v / (maxWeekData.value * 1.2) * 160)
   }));
 });
 
@@ -283,6 +395,7 @@ const linePoints = computed(() =>
 
 const areaPath = computed(() => {
   const pts = linePointsArr.value;
+  if (pts.length === 0) return '';
   const start = `M${pts[0].x},180`;
   const line = pts.map(p => `L${p.x},${p.y}`).join(' ');
   const end = `L${pts[pts.length - 1].x},180 Z`;
@@ -290,15 +403,34 @@ const areaPath = computed(() => {
 });
 
 const alertPoints = computed(() => {
-  return alertDataWeek.map((v, i) => {
-    const x = i * (600 / 6) + 50;
-    const y = 180 - (v / 10 * 80);
+  if (alertDataWeek.value.length === 0) return '';
+  const maxAlert = Math.max(...alertDataWeek.value, 1);
+  const spacing = 600 / Math.max(alertDataWeek.value.length - 1, 1);
+  return alertDataWeek.value.map((v, i) => {
+    const x = i * spacing + 30;
+    const y = 180 - (v / (maxAlert * 1.5) * 80);
     return `${x},${y}`;
   }).join(' ');
 });
 
-const generateReport = () => console.log('generate');
+const loadAll = () => {
+  loadSummary();
+  loadEmotionDistribution();
+  loadHourly();
+  loadTrend();
+};
+
+const generateReport = () => loadAll();
 const exportPDF = () => console.log('export pdf');
+
+watch([reportType, selectedDevice], () => {
+  loadAll();
+});
+
+onMounted(() => {
+  loadDevices();
+  loadAll();
+});
 </script>
 
 <style scoped>

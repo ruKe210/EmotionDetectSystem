@@ -117,9 +117,9 @@
               <td>
                 <div class="action-btns">
                   <button class="btn btn-info btn-sm" @click="viewAlert(alert)">查看</button>
-                  <button v-if="alert.status !== '已处理'" class="btn btn-success btn-sm" @click="handleAlert(alert)">处理</button>
-                  <button v-if="alert.status === '未处理'" class="btn btn-warning btn-sm" @click="ignoreAlert(alert)">忽略</button>
-                  <button v-if="alert.status === '已处理'" class="btn btn-secondary btn-sm">详情</button>
+                  <button v-if="alert.rawStatus !== 'handled'" class="btn btn-success btn-sm" @click="handleAlert(alert)">处理</button>
+                  <button v-if="alert.rawStatus === 'pending'" class="btn btn-warning btn-sm" @click="ignoreAlert(alert)">忽略</button>
+                  <button v-if="alert.rawStatus === 'handled'" class="btn btn-secondary btn-sm">详情</button>
                 </div>
               </td>
             </tr>
@@ -137,48 +137,137 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { alertsApi } from '../api/alerts';
 
 const activeFilter = ref('all');
 const filterType = ref('');
 const searchText = ref('');
+const loading = ref(false);
 
 const filterTabs = [
   { label: '全部', value: 'all' },
-  { label: '未处理', value: '未处理' },
-  { label: '处理中', value: '处理中' },
-  { label: '已处理', value: '已处理' },
+  { label: '未处理', value: 'pending' },
+  { label: '已处理', value: 'handled' },
+  { label: '已忽略', value: 'ignored' },
 ];
 
-const alerts = ref([
-  { id: 1, title: '检测到异常情绪：愤怒', device: '摄像头1', time: '2026-02-26 14:30:25', level: 'high', levelText: '高危', status: '未处理', badgeClass: 'badge-danger', type: 'emotion' },
-  { id: 2, title: '检测到持续负面情绪', device: '摄像头2', time: '2026-02-26 13:45:12', level: 'mid', levelText: '中危', status: '处理中', badgeClass: 'badge-warning', type: 'emotion' },
-  { id: 3, title: '识别置信度低于阈值', device: '摄像头1', time: '2026-02-26 12:20:08', level: 'low', levelText: '低危', status: '已处理', badgeClass: 'badge-success', type: 'system' },
-  { id: 4, title: '摄像头3离线超过5分钟', device: '摄像头3', time: '2026-02-26 11:15:30', level: 'mid', levelText: '中危', status: '已处理', badgeClass: 'badge-success', type: 'device' },
-  { id: 5, title: '检测到恐惧情绪持续', device: '摄像头2', time: '2026-02-26 10:08:44', level: 'high', levelText: '高危', status: '未处理', badgeClass: 'badge-danger', type: 'emotion' },
-]);
+const alerts = ref([]);
+
+const levelMap = { danger: 'high', warning: 'mid', info: 'low' };
+const levelTextMap = { danger: '高危', warning: '中危', info: '低危' };
+const statusTextMap = { pending: '未处理', handled: '已处理', ignored: '已忽略' };
+const badgeClassMap = { pending: 'badge-danger', handled: 'badge-success', ignored: 'badge-warning' };
+
+const loadAlerts = async () => {
+  loading.value = true;
+  try {
+    const params = { page: 1, pageSize: 100 };
+    if (activeFilter.value !== 'all') {
+      params.status = activeFilter.value;
+    }
+    if (filterType.value) {
+      params.type = filterType.value;
+    }
+    const res = await alertsApi.getAlerts(params);
+    const items = res.data.list || [];
+    alerts.value = items.map(a => ({
+      id: a.id,
+      title: a.title,
+      device: a.device || '未知设备',
+      time: formatDateTime(a.time),
+      level: levelMap[a.level] || 'low',
+      levelText: levelTextMap[a.level] || a.level,
+      status: statusTextMap[a.status] || a.status,
+      rawStatus: a.status,
+      badgeClass: badgeClassMap[a.status] || 'badge-warning',
+      type: a.type,
+    }));
+  } catch (error) {
+    console.error('加载告警失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const formatDateTime = (timeStr) => {
+  if (!timeStr) return '';
+  const d = new Date(timeStr);
+  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
 
 const summary = computed(() => [
   { label: '全部告警', count: alerts.value.length, cls: 'all' },
-  { label: '未处理', count: alerts.value.filter(a => a.status === '未处理').length, cls: 'danger' },
-  { label: '处理中', count: alerts.value.filter(a => a.status === '处理中').length, cls: 'warning' },
-  { label: '已处理', count: alerts.value.filter(a => a.status === '已处理').length, cls: 'success' },
+  { label: '未处理', count: alerts.value.filter(a => a.rawStatus === 'pending').length, cls: 'danger' },
+  { label: '已处理', count: alerts.value.filter(a => a.rawStatus === 'handled').length, cls: 'success' },
+  { label: '已忽略', count: alerts.value.filter(a => a.rawStatus === 'ignored').length, cls: 'warning' },
 ]);
 
 const filteredAlerts = computed(() => {
   return alerts.value.filter(a => {
-    if (activeFilter.value !== 'all' && a.status !== activeFilter.value) return false;
-    if (filterType.value && a.type !== filterType.value) return false;
     if (searchText.value && !a.title.includes(searchText.value) && !a.device.includes(searchText.value)) return false;
     return true;
   });
 });
 
-const handleAlert = (alert) => { alert.status = '已处理'; alert.badgeClass = 'badge-success'; };
-const ignoreAlert = (alert) => { alert.status = '已处理'; alert.badgeClass = 'badge-success'; };
+const handleAlert = async (alert) => {
+  try {
+    await alertsApi.handleAlert(alert.id);
+    alert.rawStatus = 'handled';
+    alert.status = '已处理';
+    alert.badgeClass = 'badge-success';
+    ElMessage.success('处理成功');
+  } catch (error) {
+    console.error('处理告警失败:', error);
+    ElMessage.error('操作失败');
+  }
+};
+
+const ignoreAlert = async (alert) => {
+  try {
+    await alertsApi.ignoreAlert(alert.id);
+    alert.rawStatus = 'ignored';
+    alert.status = '已忽略';
+    alert.badgeClass = 'badge-warning';
+    ElMessage.success('已忽略');
+  } catch (error) {
+    console.error('忽略告警失败:', error);
+    ElMessage.error('操作失败');
+  }
+};
+
 const viewAlert = (alert) => console.log('view', alert);
-const markAllRead = () => alerts.value.forEach(a => { a.status = '已处理'; a.badgeClass = 'badge-success'; });
+
+const markAllRead = async () => {
+  try {
+    const pendingIds = alerts.value.filter(a => a.rawStatus === 'pending').map(a => a.id);
+    if (pendingIds.length === 0) return;
+    await alertsApi.batchHandle(pendingIds);
+    alerts.value.forEach(a => {
+      if (a.rawStatus === 'pending') {
+        a.rawStatus = 'handled';
+        a.status = '已处理';
+        a.badgeClass = 'badge-success';
+      }
+    });
+    ElMessage.success('批量处理成功');
+  } catch (error) {
+    console.error('批量处理失败:', error);
+    ElMessage.error('操作失败');
+  }
+};
+
 const exportData = () => console.log('export');
+
+// 监听筛选变化
+import { watch } from 'vue';
+watch([activeFilter, filterType], () => {
+  loadAlerts();
+});
+
+onMounted(() => {
+  loadAlerts();
+});
 </script>
 
 <style scoped>

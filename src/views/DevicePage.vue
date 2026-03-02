@@ -139,16 +139,44 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+import { devicesApi } from '../api/devices';
 
 const viewMode = ref('table');
 const showAddModal = ref(false);
+const loading = ref(false);
 
-const devices = ref([
-  { id: 1, name: '摄像头 1', type: 'USB摄像头', ip: '192.168.1.100', status: 'online', lastSeen: '刚刚' },
-  { id: 2, name: '摄像头 2', type: '网络摄像头', ip: '192.168.1.101', status: 'online', lastSeen: '刚刚' },
-  { id: 3, name: '摄像头 3', type: 'USB摄像头', ip: '192.168.1.102', status: 'offline', lastSeen: '2小时前' },
-]);
+const devices = ref([]);
+
+const loadDevices = async () => {
+  loading.value = true;
+  try {
+    const res = await devicesApi.getCameraList();
+    const list = res.data || [];
+    devices.value = list.map(cam => ({
+      id: cam.id,
+      name: cam.name,
+      type: cam.type === 'usb' ? 'USB摄像头' : '网络摄像头',
+      ip: cam.ip || '-',
+      status: cam.status,
+      lastSeen: cam.last_seen ? formatRelativeTime(cam.last_seen) : '未知',
+    }));
+  } catch (error) {
+    console.error('加载设备列表失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const formatRelativeTime = (timeStr) => {
+  const date = new Date(timeStr);
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000);
+  if (diff < 60) return '刚刚';
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return `${Math.floor(diff / 86400)}天前`;
+};
 
 const onlineCount = computed(() => devices.value.filter(d => d.status === 'online').length);
 
@@ -173,17 +201,44 @@ const overviewStats = computed(() => [
   },
 ]);
 
-const toggleDevice = (device) => {
-  device.status = device.status === 'online' ? 'offline' : 'online';
-  device.lastSeen = device.status === 'online' ? '刚刚' : '刚刚';
+const toggleDevice = async (device) => {
+  try {
+    const res = await devicesApi.toggleCamera(device.id);
+    device.status = res.data.status;
+    device.lastSeen = device.status === 'online' ? '刚刚' : device.lastSeen;
+  } catch (error) {
+    console.error('切换设备状态失败:', error);
+    ElMessage.error('操作失败');
+  }
 };
 
 const editDevice = (device) => console.log('edit', device);
-const deleteDevice = (device) => {
-  const idx = devices.value.findIndex(d => d.id === device.id);
-  if (idx > -1) devices.value.splice(idx, 1);
+
+const deleteDevice = async (device) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除 ${device.name} 吗？`, '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+    await devicesApi.deleteCamera(device.id);
+    devices.value = devices.value.filter(d => d.id !== device.id);
+    ElMessage.success('删除成功');
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除设备失败:', error);
+      ElMessage.error('删除失败');
+    }
+  }
 };
-const refreshAll = () => console.log('refresh');
+
+const refreshAll = () => {
+  loadDevices();
+};
+
+onMounted(() => {
+  loadDevices();
+});
 </script>
 
 <style scoped>

@@ -136,72 +136,144 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { logsApi } from '../api/logs';
 
 const activeType = ref('all');
 const filterDate = ref('');
 const searchText = ref('');
 const currentPage = ref(1);
+const totalLogs = ref(0);
+const loading = ref(false);
 
 const logTypeTabs = [
   { label: '全部', value: 'all', cls: '' },
-  { label: '操作日志', value: '操作日志', cls: 'op' },
-  { label: '系统日志', value: '系统日志', cls: 'sys' },
-  { label: '识别日志', value: '识别日志', cls: 'rec' },
-  { label: '告警日志', value: '告警日志', cls: 'alert' },
+  { label: '操作日志', value: 'operation', cls: 'op' },
+  { label: '系统日志', value: 'system', cls: 'sys' },
+  { label: '错误日志', value: 'error', cls: 'alert' },
 ];
 
-const logs = ref([
-  { id: 1, date: '2026-02-26', time: '14:30:25', type: '操作日志', typeCls: 'op', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`, operator: 'admin', operatorCls: 'purple', content: '用户登录系统', ip: '192.168.1.10' },
-  { id: 2, date: '2026-02-26', time: '14:25:18', type: '系统日志', typeCls: 'sys', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`, operator: 'system', operatorCls: 'blue', content: '摄像头1连接成功', ip: '127.0.0.1' },
-  { id: 3, date: '2026-02-26', time: '14:20:05', type: '识别日志', typeCls: 'rec', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`, operator: 'system', operatorCls: 'green', content: '成功识别情绪：快乐（置信度 92.3%）', ip: '192.168.1.100' },
-  { id: 4, date: '2026-02-26', time: '14:15:30', type: '告警日志', typeCls: 'alert', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`, operator: 'system', operatorCls: 'red', content: '检测到异常情绪：愤怒', ip: '192.168.1.100' },
-  { id: 5, date: '2026-02-26', time: '14:10:12', type: '操作日志', typeCls: 'op', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`, operator: 'admin', operatorCls: 'purple', content: '修改系统配置 - 识别阈值调整为0.75', ip: '192.168.1.10' },
-  { id: 6, date: '2026-02-26', time: '14:05:55', type: '识别日志', typeCls: 'rec', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`, operator: 'system', operatorCls: 'green', content: '成功识别情绪：悲伤（置信度 78.1%）', ip: '192.168.1.101' },
-  { id: 7, date: '2026-02-26', time: '14:00:33', type: '系统日志', typeCls: 'sys', typeIcon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`, operator: 'system', operatorCls: 'blue', content: '系统启动完成，所有服务正常', ip: '127.0.0.1' },
-]);
+const typeNameMap = { operation: '操作日志', system: '系统日志', error: '错误日志' };
+const typeClsMap = { operation: 'op', system: 'sys', error: 'alert' };
+const operatorClsMap = { admin: 'purple', system: 'blue', user1: 'green', user2: 'red' };
+
+const typeIcons = {
+  op: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  sys: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+};
+
+const logs = ref([]);
+
+const loadLogs = async () => {
+  loading.value = true;
+  try {
+    const params = { page: currentPage.value, pageSize: 20 };
+    if (activeType.value !== 'all') params.type = activeType.value;
+    if (filterDate.value) params.date = filterDate.value;
+    if (searchText.value) params.search = searchText.value;
+
+    const res = await logsApi.getLogs(params);
+    const items = res.data.list || [];
+    totalLogs.value = res.data.total || 0;
+
+    logs.value = items.map(l => {
+      const typeCls = typeClsMap[l.type] || 'sys';
+      return {
+        id: l.id,
+        date: l.date || '',
+        time: l.time || '',
+        type: typeNameMap[l.type] || l.type,
+        rawType: l.type,
+        typeCls: typeCls,
+        typeIcon: typeIcons[typeCls] || typeIcons.sys,
+        operator: l.operator || 'system',
+        operatorCls: operatorClsMap[l.operator] || 'blue',
+        content: l.content || '',
+        ip: l.ip || '',
+      };
+    });
+  } catch (error) {
+    console.error('加载日志失败:', error);
+  } finally {
+    loading.value = false;
+  }
+};
 
 const logStats = computed(() => [
   {
     label: '操作日志',
-    count: logs.value.filter(l => l.type === '操作日志').length,
+    count: logs.value.filter(l => l.rawType === 'operation').length,
     cls: 'op',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`
+    icon: typeIcons.op
   },
   {
     label: '系统日志',
-    count: logs.value.filter(l => l.type === '系统日志').length,
+    count: logs.value.filter(l => l.rawType === 'system').length,
     cls: 'sys',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`
+    icon: typeIcons.sys
   },
   {
-    label: '识别日志',
-    count: logs.value.filter(l => l.type === '识别日志').length,
-    cls: 'rec',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>`
-  },
-  {
-    label: '告警日志',
-    count: logs.value.filter(l => l.type === '告警日志').length,
+    label: '错误日志',
+    count: logs.value.filter(l => l.rawType === 'error').length,
     cls: 'alert',
-    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>`
+    icon: typeIcons.alert
+  },
+  {
+    label: '全部日志',
+    count: totalLogs.value,
+    cls: 'rec',
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
   },
 ]);
 
-const filteredLogs = computed(() => {
-  return logs.value.filter(l => {
-    if (activeType.value !== 'all' && l.type !== activeType.value) return false;
-    if (searchText.value && !l.content.includes(searchText.value) && !l.operator.includes(searchText.value)) return false;
-    if (filterDate.value && l.date !== filterDate.value) return false;
-    return true;
-  });
+const filteredLogs = computed(() => logs.value);
+
+const clearFilters = () => {
+  activeType.value = 'all';
+  searchText.value = '';
+  filterDate.value = '';
+  currentPage.value = 1;
+  loadLogs();
+};
+
+const exportLogs = () => console.log('export');
+
+const clearLogs = async () => {
+  try {
+    await ElMessageBox.confirm('确定要清除所有日志吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    });
+    await logsApi.clearLogs();
+    logs.value = [];
+    totalLogs.value = 0;
+    ElMessage.success('日志已清除');
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('清除日志失败:', error);
+    }
+  }
+};
+
+watch([activeType, filterDate], () => {
+  currentPage.value = 1;
+  loadLogs();
 });
 
-const clearFilters = () => { activeType.value = 'all'; searchText.value = ''; filterDate.value = ''; };
-const exportLogs = () => console.log('export');
-const clearLogs = () => {
-  if (confirm('确定要清除所有日志吗？')) logs.value = [];
-};
+let searchTimer = null;
+watch(searchText, () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    currentPage.value = 1;
+    loadLogs();
+  }, 300);
+});
+
+onMounted(() => {
+  loadLogs();
+});
 </script>
 
 <style scoped>
