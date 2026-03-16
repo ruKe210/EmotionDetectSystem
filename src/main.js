@@ -7,7 +7,14 @@ import App from './App.vue'
 import router from './router'
 
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
 app.use(ElementPlus)
 app.use(router)
+
+// 在挂载前恢复用户状态
+import { useSystemStore } from './store/modules/systemStore'
+const systemStore = useSystemStore()
+systemStore.initSystem()
+
 app.mount('#app')

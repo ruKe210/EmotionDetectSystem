@@ -1,9 +1,10 @@
 import axios from 'axios';
+import router from '../router/index';
 
 // 创建axios实例
 const service = axios.create({
-  baseURL: '/api', // 基础URL
-  timeout: 10000, // 超时时间
+  baseURL: '/api',
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -12,7 +13,6 @@ const service = axios.create({
 // 请求拦截器
 service.interceptors.request.use(
   config => {
-    // 从本地存储获取token
     const token = localStorage.getItem('userToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -30,7 +30,6 @@ service.interceptors.response.use(
   response => {
     const res = response.data;
     if (res.code !== 200) {
-      // 处理错误状态
       console.error('响应错误:', res.message);
       return Promise.reject(new Error(res.message || 'Error'));
     }
@@ -38,7 +37,16 @@ service.interceptors.response.use(
   },
   error => {
     console.error('响应错误:', error);
-    // 提取后端返回的错误信息
+
+    // 401 未认证 → token 无效或过期，跳转登录
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('userToken');
+      if (router.currentRoute.value.path !== '/login') {
+        router.push('/login');
+      }
+      return Promise.reject(new Error('请先登录'));
+    }
+
     if (error.response && error.response.data) {
       const detail = error.response.data.detail || error.response.data.message;
       if (detail) {

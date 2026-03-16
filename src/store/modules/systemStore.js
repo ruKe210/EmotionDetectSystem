@@ -119,6 +119,9 @@ export const useSystemStore = defineStore('system', {
       if (user.token) {
         localStorage.setItem('userToken', user.token);
       }
+      // 持久化用户信息（不含 token）
+      const { token, ...userInfo } = this.user;
+      localStorage.setItem('userInfo', JSON.stringify(userInfo));
     },
     
     // 清除用户信息
@@ -132,6 +135,7 @@ export const useSystemStore = defineStore('system', {
         token: null
       };
       localStorage.removeItem('userToken');
+      localStorage.removeItem('userInfo');
     },
     
     // 更新系统状态
@@ -261,7 +265,17 @@ export const useSystemStore = defineStore('system', {
       const token = localStorage.getItem('userToken');
       if (token) {
         this.user.token = token;
-        // 这里可以添加验证token的逻辑
+      }
+
+      // 恢复用户信息
+      const savedUser = localStorage.getItem('userInfo');
+      if (savedUser) {
+        try {
+          const userInfo = JSON.parse(savedUser);
+          this.user = { ...this.user, ...userInfo, token: this.user.token };
+        } catch (e) {
+          console.error('恢复用户信息失败:', e);
+        }
       }
       
       // 加载系统配置
