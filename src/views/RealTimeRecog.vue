@@ -63,7 +63,7 @@
         </div>
       </div>
 
-      <div class="sidebar">
+      <div class="side-panel">
         <GlobalStats
           :stats="globalStats"
           @refresh="refreshStats"
@@ -497,7 +497,7 @@ onMounted(async () => {
   height: 280px;
 }
 
-.sidebar {
+.side-panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -599,7 +599,7 @@ onMounted(async () => {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
+  .side-panel {
     order: -1;
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -630,7 +630,7 @@ onMounted(async () => {
     padding: 10px;
   }
 
-  .sidebar {
+  .side-panel {
     grid-template-columns: 1fr;
   }
 }

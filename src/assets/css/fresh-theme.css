@@ -15,7 +15,6 @@
   --lavender: #c5b3e6;
   --lavender-light: #f9f7fe;
   --sidebar-width: 240px;
-  --sidebar-collapsed: 68px;
   --topbar-height: 64px;
   --radius: 16px;
   --shadow: 0 2px 16px rgba(124, 159, 245, 0.06);
@@ -62,10 +61,6 @@ body {
   z-index: 100;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-}
-
-.sidebar.collapsed {
-  width: var(--sidebar-collapsed);
 }
 
 /* Logo */
@@ -120,29 +115,7 @@ body {
 }
 
 .collapse-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: var(--primary-light);
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: var(--transition);
-}
-
-.collapse-btn:hover {
-  background: linear-gradient(135deg, var(--primary-light) 0%, rgba(197, 179, 230, 0.15) 100%);
-  transform: scale(1.05);
-}
-
-.collapse-btn svg {
-  width: 14px;
-  height: 14px;
-  stroke: var(--primary);
-  transition: transform 0.3s ease;
+  display: none;
 }
 
 /* 导航 */
@@ -319,10 +292,6 @@ body {
   flex-direction: column;
   min-height: 100vh;
   transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.sidebar.collapsed ~ .main-wrapper {
-  margin-left: var(--sidebar-collapsed);
 }
 
 /* 顶部栏 */

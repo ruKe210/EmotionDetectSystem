@@ -1,7 +1,7 @@
 <template>
   <div class="layout">
     <!-- 侧边栏 -->
-    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <aside class="sidebar">
       <!-- Logo区域 -->
       <div class="sidebar-logo">
         <div class="logo-icon">
@@ -12,17 +12,10 @@
             <path d="M6 8c-1.1 0-2 .9-2 2s.9 2 2 2"/>
           </svg>
         </div>
-        <transition name="fade-slide">
-          <div v-show="!sidebarCollapsed" class="logo-text">
-            <span class="logo-title">情绪识别</span>
-            <span class="logo-sub">智能分析系统</span>
-          </div>
-        </transition>
-        <button class="collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :style="{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'none' }">
-            <path d="M15 18l-6-6 6-6"/>
-          </svg>
-        </button>
+        <div class="logo-text">
+          <span class="logo-title">情绪识别</span>
+          <span class="logo-sub">智能分析系统</span>
+        </div>
       </div>
 
       <!-- 导航菜单 -->
@@ -33,15 +26,10 @@
           :to="item.path"
           class="nav-item"
           :class="{ active: isActive(item.path) }"
-          :title="sidebarCollapsed ? item.label : ''"
         >
           <div class="nav-icon" v-html="item.icon"></div>
-          <transition name="fade-slide">
-            <span v-show="!sidebarCollapsed" class="nav-label">{{ item.label }}</span>
-          </transition>
-          <transition name="fade">
-            <span v-show="!sidebarCollapsed && item.badge" class="nav-badge">{{ item.badge }}</span>
-          </transition>
+          <span class="nav-label">{{ item.label }}</span>
+          <span v-if="item.badge" class="nav-badge">{{ item.badge }}</span>
         </router-link>
       </nav>
 
@@ -53,21 +41,17 @@
             <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
           </svg>
         </div>
-        <transition name="fade-slide">
-          <div v-show="!sidebarCollapsed" class="user-info">
-            <span class="user-name">系统管理员</span>
-            <span class="user-role">Administrator</span>
-          </div>
-        </transition>
-        <transition name="fade">
-          <button v-show="!sidebarCollapsed" class="logout-btn" @click="handleLogout">
+        <div class="user-info">
+          <span class="user-name">系统管理员</span>
+          <span class="user-role">Administrator</span>
+        </div>
+        <button class="logout-btn" @click="handleLogout">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
               <polyline points="16 17 21 12 16 7"/>
               <line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
           </button>
-        </transition>
       </div>
     </aside>
 
@@ -121,7 +105,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 
 const route = useRoute();
-const sidebarCollapsed = ref(false);
 const currentTime = ref('');
 
 let timer = null;
