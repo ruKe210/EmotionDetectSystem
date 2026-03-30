@@ -24,7 +24,9 @@ export const faceApi = {
   
   // 初始化WebSocket连接
   initWS: (callback) => {
-    const ws = new WebSocket('ws://localhost:8000/ws/face');
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host;
+    const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/face`);
     
     ws.onopen = () => {
       console.log('WebSocket连接已建立');
