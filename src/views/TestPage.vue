@@ -62,12 +62,20 @@
           <div class="camera-grid">
             <div class="camera-item" v-for="cam in cameras" :key="cam.id">
               <div class="camera-feed" :class="{ offline: cam.status === 'offline' }">
-                <div class="camera-placeholder">
+                <!-- 实时视频帧 -->
+                <img
+                  v-if="cam.status === 'online' && cam.frame"
+                  :src="cam.frame"
+                  class="camera-live-img"
+                  alt="实时画面"
+                />
+                <!-- 离线或无画面时的占位 -->
+                <div v-else class="camera-placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <path d="M23 7l-7 5 7 5V7z"/>
                     <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
                   </svg>
-                  <span>{{ cam.status === 'online' ? '实时画面' : '设备离线' }}</span>
+                  <span>{{ cam.status === 'online' ? '等待画面...' : '设备离线' }}</span>
                 </div>
                 <div class="camera-info-overlay">
                   <span class="camera-name">{{ cam.name }}</span>
@@ -172,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { faceApi } from '../api/face';
 import { alertsApi } from '../api/alerts';
 import { reportsApi } from '../api/reports';
@@ -245,6 +253,109 @@ const stats = ref([
 
 const cameras = ref([]);
 
+// WebSocket 连接
+let videoWs = null;
+let faceWs = null;
+let wsReconnectTimer = null;
+
+const connectVideoWs = () => {
+  if (videoWs) {
+    videoWs.close();
+    videoWs = null;
+  }
+  try {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host;
+    videoWs = new WebSocket(`${wsProtocol}//${wsHost}/ws/video`);
+
+    videoWs.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'video' && message.frame) {
+          // 将帧数据更新到第一个在线摄像头
+          const onlineCam = cameras.value.find(c => c.status === 'online');
+          if (onlineCam) {
+            onlineCam.frame = `data:image/jpeg;base64,${message.frame}`;
+          }
+        }
+      } catch (err) {
+        // ignore parse errors
+      }
+    };
+
+    videoWs.onclose = () => {
+      // 自动重连
+      if (!wsReconnectTimer) {
+        wsReconnectTimer = setTimeout(() => {
+          wsReconnectTimer = null;
+          connectVideoWs();
+        }, 3000);
+      }
+    };
+
+    videoWs.onerror = () => {
+      // onclose 会处理重连
+    };
+  } catch (err) {
+    console.error('视频WebSocket连接失败:', err);
+  }
+};
+
+const connectFaceWs = () => {
+  if (faceWs) {
+    faceWs.close();
+    faceWs = null;
+  }
+  try {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.host;
+    faceWs = new WebSocket(`${wsProtocol}//${wsHost}/ws/face`);
+
+    faceWs.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === 'face' && message.data && message.data.faces) {
+          const faces = message.data.faces;
+          // 更新第一个在线摄像头的情绪显示
+          const onlineCam = cameras.value.find(c => c.status === 'online');
+          if (onlineCam && faces.length > 0) {
+            const dominant = faces[0].dominant_emotion || 'neutral';
+            const emoji = emotionEmojiMap[dominant] || '😐';
+            const name = emotionNameMap[dominant] || dominant;
+            onlineCam.emotion = `${emoji} ${name}`;
+            onlineCam.emotionClass = dominant;
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+
+    faceWs.onclose = () => {
+      setTimeout(() => connectFaceWs(), 3000);
+    };
+  } catch (err) {
+    console.error('人脸WebSocket连接失败:', err);
+  }
+};
+
+const disconnectWs = () => {
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = null;
+  }
+  if (videoWs) {
+    videoWs.onclose = null; // 防止触发重连
+    videoWs.close();
+    videoWs = null;
+  }
+  if (faceWs) {
+    faceWs.onclose = null;
+    faceWs.close();
+    faceWs = null;
+  }
+};
+
 const emotionNameMap = {
   happy: '快乐', sad: '悲伤', angry: '愤怒', neutral: '中性',
   fearful: '恐惧', surprised: '惊讶', disgusted: '厌恶', contempt: '蔑视'
@@ -314,10 +425,16 @@ const loadStats = async () => {
 
     // 处理摄像头列表
     cameras.value = [
-      { id: 1, name: '摄像头 1', status: data.online_devices >= 1 ? 'online' : 'offline', emotion: data.online_devices >= 1 ? '😊 检测中' : '离线', emotionClass: data.online_devices >= 1 ? 'happy' : '' },
-      { id: 2, name: '摄像头 2', status: data.online_devices >= 2 ? 'online' : 'offline', emotion: data.online_devices >= 2 ? '😐 检测中' : '离线', emotionClass: data.online_devices >= 2 ? 'neutral' : '' },
-      { id: 3, name: '摄像头 3', status: data.online_devices >= 3 ? 'online' : 'offline', emotion: data.online_devices >= 3 ? '😊 检测中' : '离线', emotionClass: '' },
+      { id: 1, name: '摄像头 1', status: data.online_devices >= 1 ? 'online' : 'offline', emotion: data.online_devices >= 1 ? '😊 检测中' : '离线', emotionClass: data.online_devices >= 1 ? 'happy' : '', frame: null },
+      { id: 2, name: '摄像头 2', status: data.online_devices >= 2 ? 'online' : 'offline', emotion: data.online_devices >= 2 ? '😐 检测中' : '离线', emotionClass: data.online_devices >= 2 ? 'neutral' : '', frame: null },
+      { id: 3, name: '摄像头 3', status: data.online_devices >= 3 ? 'online' : 'offline', emotion: data.online_devices >= 3 ? '😊 检测中' : '离线', emotionClass: '', frame: null },
     ];
+
+    // 有在线设备时连接视频流
+    if (data.online_devices > 0) {
+      connectVideoWs();
+      connectFaceWs();
+    }
   } catch (error) {
     console.error('加载统计数据失败:', error);
   }
@@ -386,6 +503,10 @@ onMounted(() => {
   loadAccuracy();
   loadAlerts();
   loadTrend();
+});
+
+onUnmounted(() => {
+  disconnectWs();
 });
 </script>
 
@@ -649,6 +770,13 @@ onMounted(() => {
 
 .camera-placeholder span {
   font-size: 11px;
+}
+
+.camera-live-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .camera-info-overlay {
