@@ -45,31 +45,6 @@
           </div>
         </div>
       </div>
-      
-      <div class="emotion-distribution">
-        <h5>情绪分布</h5>
-        <div class="emotion-chart">
-          <canvas ref="emotionChart"></canvas>
-        </div>
-      </div>
-      
-      <div class="system-status">
-        <h5>系统状态</h5>
-        <div class="status-grid">
-          <div class="status-item">
-            <span class="status-label">CPU使用率</span>
-            <span class="status-value">{{ stats.cpuUsage }}%</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">内存使用率</span>
-            <span class="status-value">{{ stats.memoryUsage }}%</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">系统运行时间</span>
-            <span class="status-value">{{ stats.uptime }}</span>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
