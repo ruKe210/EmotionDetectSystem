@@ -1,7 +1,17 @@
 <template>
   <div class="real-time-recog">
     <div class="page-header">
-      <h2>实时情绪识别</h2>
+      <div class="page-header-left">
+        <div class="page-icon" style="background: linear-gradient(135deg, #6c8ef0, #a29bfe)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+        </div>
+        <div>
+          <h2>实时情绪识别</h2>
+        </div>
+      </div>
       <div class="header-actions">
         <el-button type="primary" @click="startDetection" v-if="!isRunning">
           <i class="el-icon-video-play"></i> 开始检测
@@ -477,14 +487,16 @@ onUnmounted(() => {
 @keyframes fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.page-header-left { display: flex; align-items: center; gap: 14px; }
+.page-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(108, 142, 240, 0.3);
+}
+.page-icon svg { width: 24px; height: 24px; }
 .page-header h2 {
   margin: 0; font-size: 22px; font-weight: 600; color: #3d4852;
-  display: flex; align-items: center; gap: 12px; letter-spacing: -0.5px;
-}
-.page-header h2::before {
-  content: ''; width: 4px; height: 28px;
-  background: linear-gradient(135deg, var(--mint), var(--primary));
-  border-radius: 4px; display: inline-block;
+  letter-spacing: -0.5px;
 }
 .header-actions { display: flex; align-items: center; gap: 10px; }
 

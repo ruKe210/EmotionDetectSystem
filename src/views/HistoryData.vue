@@ -1,7 +1,17 @@
 <template>
   <div class="history-data">
     <div class="page-header">
-      <h2>历史数据</h2>
+      <div class="page-header-left">
+        <div class="page-icon" style="background: linear-gradient(135deg, #a29bfe, #6c5ce7)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </div>
+        <div>
+          <h2>历史数据</h2>
+        </div>
+      </div>
       <div class="header-actions">
         <el-button type="primary" @click="exportData">
           <i class="el-icon-download"></i> 导出数据
@@ -408,23 +418,20 @@ onMounted(() => {
   margin-bottom: 20px;
 }
 
+.page-header-left { display: flex; align-items: center; gap: 14px; }
+
+.page-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(108, 142, 240, 0.3);
+}
+.page-icon svg { width: 24px; height: 24px; }
+
 .page-header h2 {
   margin: 0;
   font-size: 20px;
   font-weight: 800;
   color: #2d3436;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.page-header h2::before {
-  content: '';
-  width: 4px;
-  height: 24px;
-  background: linear-gradient(135deg, var(--primary), var(--lavender));
-  border-radius: 4px;
-  display: inline-block;
 }
 
 .header-actions {
