@@ -85,6 +85,9 @@ function connectVideo() {
       if (msg.type === 'pong') return
 
       if (msg.type === 'video' && msg.frame) {
+        // 如果指定了 cameraId，只显示对应摄像头的帧
+        if (props.cameraId && msg.camera_id && msg.camera_id !== props.cameraId) return
+
         videoFrame.value = `data:image/jpeg;base64,${msg.frame}`
         hasReceivedFrame.value = true
 
@@ -141,6 +144,9 @@ function connectFace() {
     try {
       const msg = JSON.parse(event.data)
       if (msg.type === 'face' && msg.data) {
+        // 如果指定了 cameraId，只处理对应摄像头的数据
+        if (props.cameraId && msg.data.camera_id && msg.data.camera_id !== props.cameraId) return
+
         const faces = msg.data.faces || []
         faceCount.value = faces.length
         if (canvas.value) drawFaceBoxes(faces)

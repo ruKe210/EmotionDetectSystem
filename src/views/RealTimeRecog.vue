@@ -290,25 +290,27 @@ const refreshStats = () => {
 // 获取真实摄像头列表
 const loadCameras = async () => {
   try {
-    await navigator.mediaDevices.getUserMedia({ video: true });
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+    // 从后端数据库加载摄像头列表
+    const { devicesApi } = await import('../api/devices');
+    const res = await devicesApi.getCameraList();
+    const list = res.data || [];
 
-    if (videoDevices.length > 0) {
-      cameras.value = videoDevices.map((device, index) => ({
-        id: device.deviceId,
-        name: device.label || `摄像头 ${index + 1}`
+    if (list.length > 0) {
+      cameras.value = list.map(cam => ({
+        id: cam.id,
+        name: cam.name,
+        type: cam.type,
       }));
       cameraId.value = cameras.value[0].id;
       faceStore.updateCameras(cameras.value);
       faceStore.setCurrentCamera(cameraId.value);
     } else {
-      cameras.value = [{ id: '', name: '默认摄像头' }];
+      cameras.value = [{ id: '', name: '默认摄像头', type: 'usb' }];
       cameraId.value = '';
     }
   } catch (err) {
     console.error('获取摄像头列表失败:', err);
-    cameras.value = [{ id: '', name: '默认摄像头' }];
+    cameras.value = [{ id: '', name: '默认摄像头', type: 'usb' }];
     cameraId.value = '';
   }
 };
