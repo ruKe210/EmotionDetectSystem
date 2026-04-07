@@ -233,15 +233,24 @@ const getEmotionClass = (face) => {
   return max.key;
 };
 
-const refreshStats = () => {
-  faceStore.updateGlobalStats({
-    onlineDevices: Math.floor(Math.random() * 10) + 1,
-    todayRecognition: Math.floor(Math.random() * 1000) + 100,
-    todayAlerts: Math.floor(Math.random() * 50),
-    cpuUsage: Math.floor(Math.random() * 50) + 10,
-    memoryUsage: Math.floor(Math.random() * 60) + 20,
-    uptime: `${Math.floor(Math.random() * 24)}h ${Math.floor(Math.random() * 60)}m`
-  });
+const refreshStats = async () => {
+  try {
+    const { faceApi } = await import('../api/face');
+    const res = await faceApi.getGlobalStats();
+    const data = res.data;
+    faceStore.updateGlobalStats({
+      onlineDevices: data.online_devices || 0,
+      currentFaces: data.current_faces || 0,
+      todayRecognition: data.today_recognition || 0,
+      todayAlerts: data.today_alerts || 0,
+      cpuUsage: data.cpu_usage || 0,
+      memoryUsage: data.memory_usage || 0,
+      uptime: data.uptime ? `${Math.floor(data.uptime / 3600)}h ${Math.floor((data.uptime % 3600) / 60)}m` : '0h 0m',
+      emotionDistribution: data.emotion_distribution || {},
+    });
+  } catch (e) {
+    console.error('刷新统计失败:', e);
+  }
 };
 
 const loadCameras = async () => {
@@ -272,6 +281,7 @@ const loadCameras = async () => {
 
 onMounted(async () => {
   await loadCameras();
+  await refreshStats();
   faceStore.loadSystemConfig();
   systemStore.initSystem();
   startDetection();

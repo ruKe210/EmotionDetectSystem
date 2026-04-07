@@ -427,7 +427,7 @@ const loadStats = async () => {
     const res = await faceApi.getGlobalStats();
     const data = res.data;
 
-    stats.value[0].value = `${data.online_devices} / ${data.online_devices + (3 - data.online_devices)}`;
+    stats.value[0].value = `${data.online_devices} / ${cameras.value.length || data.online_devices}`;
     stats.value[0].trend = data.online_devices > 0 ? '设备运行正常' : '无在线设备';
     stats.value[0].trendType = data.online_devices > 0 ? 'up' : 'down';
 
