@@ -60,8 +60,8 @@
         </div>
         <div class="card-body">
           <div class="camera-grid">
-            <div class="camera-item" v-for="cam in cameras" :key="cam.id">
-              <div class="camera-feed" :class="{ offline: cam.status === 'offline' }">
+            <div class="camera-item" v-for="cam in cameras" :key="cam.id" @click="goToRealtime(cam)" style="cursor:pointer" title="点击进入实时检测">
+              <div class="camera-feed" :class="{ offline: cam.status !== 'online' }">
                 <!-- 实时视频帧 -->
                 <img
                   v-if="cam.status === 'online' && cam.frame"
@@ -81,7 +81,14 @@
                   <span class="camera-name">{{ cam.name }}</span>
                   <span class="camera-emotion" :class="cam.emotionClass">{{ cam.emotion }}</span>
                 </div>
-                <div class="camera-status-dot" :class="cam.status"></div>
+                <div class="camera-status-dot" :class="cam.status === 'online' ? 'online' : 'offline'"></div>
+              </div>
+            </div>
+            <div v-if="cameras.length === 0" class="camera-item">
+              <div class="camera-feed offline">
+                <div class="camera-placeholder">
+                  <span>暂无摄像头，请在设备管理中添加</span>
+                </div>
               </div>
             </div>
           </div>
