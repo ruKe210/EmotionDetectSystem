@@ -37,10 +37,23 @@
 
           <div class="emotion-trend">
             <div class="card-header">
-              <h3>情绪变化趋势</h3>
+              <h3>情绪评价指标</h3>
             </div>
-            <div class="chart-container">
-              <EmotionChart title="情绪趋势" :data="emotionData" :trend-data="trendData" />
+            <div class="indicator-tabs">
+              <el-tabs v-model="indicatorTab">
+                <!-- 一维：离散情绪分布 -->
+                <el-tab-pane label="离散情绪 (1D)" name="discrete">
+                  <div class="indicator-chart" ref="discreteChartRef"></div>
+                </el-tab-pane>
+                <!-- 二维：Valence-Arousal 实时曲线 -->
+                <el-tab-pane label="二维情感 (VA)" name="va">
+                  <div class="indicator-chart" ref="vaChartRef"></div>
+                </el-tab-pane>
+                <!-- 三维：PAD 雷达图 -->
+                <el-tab-pane label="三维情感 (PAD)" name="pad">
+                  <div class="indicator-chart" ref="padChartRef"></div>
+                </el-tab-pane>
+              </el-tabs>
             </div>
           </div>
         </div>
@@ -101,14 +114,14 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
+import * as echarts from 'echarts';
 import { useFaceStore } from '../store/modules/faceStore';
 import { useSystemStore } from '../store/modules/systemStore';
 import FaceCanvas from '../components/FaceCanvas.vue';
 import GlobalStats from '../components/GlobalStats.vue';
 import FaceDetail from '../components/FaceDetail.vue';
-import EmotionChart from '../components/EmotionChart.vue';
 
 const route = useRoute();
 const faceStore = useFaceStore();
@@ -130,6 +143,20 @@ const emotionData = reactive({
 
 const trendData = reactive({ times: [], values: [] });
 
+// 情绪评价指标
+const indicatorTab = ref('discrete');
+const discreteChartRef = ref(null);
+const vaChartRef = ref(null);
+const padChartRef = ref(null);
+let discreteChart = null;
+let vaChart = null;
+let padChart = null;
+
+// VA 历史数据（最近 30 个点）
+const vaHistory = reactive({ times: [], valence: [], arousal: [] });
+// PAD 当前值
+const padValues = reactive({ pleasure: 0, arousal: 0, dominance: 0 });
+
 const startDetection = () => {
   isRunning.value = true;
   faceStore.startDetection();
@@ -150,6 +177,7 @@ const handleFaceDetected = (faces) => {
   faceStore.updateCurrentFaces(faces);
   updateEmotionData(faces);
   updateTrendData(faces);
+  updateIndicatorCharts(faces);
 };
 
 const handleDetectionError = (error) => {
@@ -189,6 +217,154 @@ const updateTrendData = (faces) => {
     trendData.values.shift();
   }
 };
+
+// ========== 情绪评价指标图表 ==========
+const emotionColors = {
+  happy: '#67c23a', sad: '#409eff', angry: '#f56c6c', neutral: '#909399',
+  fearful: '#e6a23c', surprised: '#17c6cf', disgusted: '#8e44ad', contempt: '#6c5ce7'
+};
+const emotionLabels = {
+  happy: '开心', sad: '悲伤', angry: '愤怒', neutral: '中性',
+  fearful: '恐惧', surprised: '惊讶', disgusted: '厌恶', contempt: '蔑视'
+};
+
+const initDiscreteChart = () => {
+  if (!discreteChartRef.value) return;
+  if (discreteChart) discreteChart.dispose();
+  discreteChart = echarts.init(discreteChartRef.value);
+  updateDiscreteChart();
+};
+
+const updateDiscreteChart = () => {
+  if (!discreteChart) return;
+  const face = currentFaces.value.length > 0 ? currentFaces.value[0] : null;
+  const expressions = face?.expressions || {};
+
+  // 固定顺序，颜色不变
+  const order = ['happy', 'neutral', 'sad', 'angry', 'surprised', 'fearful', 'disgusted', 'contempt'];
+  const labels = order.map(k => emotionLabels[k]);
+  const values = order.map(k => Math.round((expressions[k] || 0) * 100));
+  const colors = order.map(k => emotionColors[k]);
+
+  discreteChart.setOption({
+    grid: { left: 60, right: 50, top: 10, bottom: 10 },
+    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
+    yAxis: { type: 'category', data: labels, inverse: true, axisLabel: { fontSize: 12, fontWeight: 600 } },
+    series: [{
+      type: 'bar',
+      data: values.map((v, i) => ({ value: v, itemStyle: { color: colors[i] } })),
+      barWidth: 16,
+      label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11, fontWeight: 'bold' }
+    }]
+  }, true);
+};
+
+const initVAChart = () => {
+  if (!vaChartRef.value) return;
+  if (vaChart) vaChart.dispose();
+  vaChart = echarts.init(vaChartRef.value);
+  updateVAChart();
+};
+
+const updateVAChart = () => {
+  if (!vaChart) return;
+  const v = vaHistory.valence.length > 0 ? vaHistory.valence[vaHistory.valence.length - 1] : 0;
+  const a = vaHistory.arousal.length > 0 ? vaHistory.arousal[vaHistory.arousal.length - 1] : 0;
+
+  vaChart.setOption({
+    grid: { left: 55, right: 30, top: 40, bottom: 50 },
+    xAxis: {
+      name: 'Valence (效价)', nameLocation: 'center', nameGap: 30,
+      min: -1, max: 1, type: 'value',
+      splitLine: { lineStyle: { type: 'dashed', color: '#e0e0e0' } },
+      axisLine: { lineStyle: { color: '#999' } }
+    },
+    yAxis: {
+      name: 'Arousal (唤醒度)', nameLocation: 'center', nameGap: 40,
+      min: -1, max: 1, type: 'value',
+      splitLine: { lineStyle: { type: 'dashed', color: '#e0e0e0' } },
+      axisLine: { lineStyle: { color: '#999' } }
+    },
+    graphic: [
+      { type: 'text', left: '72%', top: '8%', style: { text: '兴奋/开心', fill: '#67c23a', fontSize: 11 } },
+      { type: 'text', left: '8%', top: '8%', style: { text: '愤怒/恐惧', fill: '#f56c6c', fontSize: 11 } },
+      { type: 'text', left: '8%', bottom: '15%', style: { text: '悲伤/厌恶', fill: '#409eff', fontSize: 11 } },
+      { type: 'text', left: '72%', bottom: '15%', style: { text: '平静/满足', fill: '#909399', fontSize: 11 } },
+    ],
+    series: [{
+      type: 'scatter', symbolSize: 18,
+      data: [[v, a]],
+      itemStyle: { color: v >= 0 ? '#67c23a' : '#f56c6c', shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.2)' },
+      label: { show: true, formatter: `(${v.toFixed(2)}, ${a.toFixed(2)})`, position: 'top', fontSize: 11, fontWeight: 'bold' }
+    }]
+  }, true);
+};
+
+const initPADChart = () => {
+  if (!padChartRef.value) return;
+  if (padChart) padChart.dispose();
+  padChart = echarts.init(padChartRef.value);
+  updatePADChart();
+};
+
+const updatePADChart = () => {
+  if (!padChart) return;
+  const p = padValues.pleasure, a = padValues.arousal, d = padValues.dominance;
+  padChart.setOption({
+    radar: {
+      indicator: [
+        { name: `愉悦度\n${p.toFixed(2)}`, max: 1, min: -1 },
+        { name: `唤醒度\n${a.toFixed(2)}`, max: 1, min: -1 },
+        { name: `支配度\n${d.toFixed(2)}`, max: 1, min: -1 },
+      ],
+      radius: '60%', center: ['50%', '55%'],
+      splitArea: { areaStyle: { color: ['rgba(108,142,240,0.05)', 'rgba(108,142,240,0.1)'] } }
+    },
+    series: [{
+      type: 'radar',
+      data: [{ value: [p, a, d], name: '当前情感',
+        areaStyle: { color: 'rgba(108,142,240,0.25)' },
+        lineStyle: { color: '#6c8ef0', width: 2 },
+        itemStyle: { color: '#6c8ef0' }
+      }]
+    }]
+  }, true);
+};
+
+// 人脸数据更新时同步更新图表
+const updateIndicatorCharts = (faces) => {
+  if (faces.length === 0) return;
+  const face = faces[0]; // 取第一个人脸
+
+  // 更新 VA 历史
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  vaHistory.times.push(timeStr);
+  vaHistory.valence.push(face.valence ?? 0);
+  vaHistory.arousal.push(face.arousal ?? 0);
+  if (vaHistory.times.length > 30) {
+    vaHistory.times.shift(); vaHistory.valence.shift(); vaHistory.arousal.shift();
+  }
+
+  // 更新 PAD
+  padValues.pleasure = face.pleasure ?? face.valence ?? 0;
+  padValues.arousal = face.pad_arousal ?? face.arousal ?? 0;
+  padValues.dominance = face.dominance ?? 0;
+
+  // 刷新当前可见的图表
+  if (indicatorTab.value === 'discrete') updateDiscreteChart();
+  else if (indicatorTab.value === 'va') updateVAChart();
+  else if (indicatorTab.value === 'pad') updatePADChart();
+};
+
+// 切换 tab 时初始化对应图表
+watch(indicatorTab, () => {
+  nextTick(() => {
+    if (indicatorTab.value === 'discrete') initDiscreteChart();
+    else if (indicatorTab.value === 'va') initVAChart();
+    else if (indicatorTab.value === 'pad') initPADChart();
+  });
+});
 
 const selectFace = (face, index) => {
   selectedFace.value = {
@@ -285,6 +461,14 @@ onMounted(async () => {
   faceStore.loadSystemConfig();
   systemStore.initSystem();
   startDetection();
+  // 初始化默认图表
+  nextTick(() => initDiscreteChart());
+});
+
+onUnmounted(() => {
+  if (discreteChart) discreteChart.dispose();
+  if (vaChart) vaChart.dispose();
+  if (padChart) padChart.dispose();
 });
 </script>
 
@@ -335,7 +519,7 @@ onMounted(async () => {
 .status-stopped { background: var(--pink-light); color: var(--pink); }
 .status-stopped::before { background: var(--pink); }
 
-.video-container { padding: 12px; height: 480px; }
+.video-container { padding: 12px; height: 600px; }
 
 .emotion-trend {
   background: white; border-radius: 14px;
@@ -355,6 +539,12 @@ onMounted(async () => {
   background: var(--primary-light); padding: 3px 10px; border-radius: 20px;
 }
 .chart-container { padding: 16px; height: 280px; }
+
+/* 情绪评价指标 */
+.indicator-tabs { padding: 0 16px 16px; }
+.indicator-tabs :deep(.el-tabs__header) { margin-bottom: 12px; }
+.indicator-tabs :deep(.el-tabs__item) { font-size: 13px; font-weight: 600; }
+.indicator-chart { height: 260px; width: 100%; }
 
 .side-panel { display: flex; flex-direction: column; gap: 16px; }
 
