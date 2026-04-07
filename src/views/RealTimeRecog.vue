@@ -112,6 +112,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { useFaceStore } from '../store/modules/faceStore';
 import { useSystemStore } from '../store/modules/systemStore';
 import FaceCanvas from '../components/FaceCanvas.vue';
@@ -119,6 +120,7 @@ import GlobalStats from '../components/GlobalStats.vue';
 import FaceDetail from '../components/FaceDetail.vue';
 import EmotionChart from '../components/EmotionChart.vue';
 
+const route = useRoute();
 const faceStore = useFaceStore();
 const systemStore = useSystemStore();
 
@@ -301,7 +303,13 @@ const loadCameras = async () => {
         name: cam.name,
         type: cam.type,
       }));
-      cameraId.value = cameras.value[0].id;
+      // 如果 URL 带了 camera 参数，自动选中
+      const queryCam = route.query.camera;
+      if (queryCam && cameras.value.find(c => c.id === queryCam)) {
+        cameraId.value = queryCam;
+      } else {
+        cameraId.value = cameras.value[0].id;
+      }
       faceStore.updateCameras(cameras.value);
       faceStore.setCurrentCamera(cameraId.value);
     } else {

@@ -181,11 +181,14 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { faceApi } from '../api/face';
+import { devicesApi } from '../api/devices';
 import { alertsApi } from '../api/alerts';
 import { reportsApi } from '../api/reports';
 import { useSystemStore } from '../store/modules/systemStore';
 
+const router = useRouter();
 const systemStore = useSystemStore();
 
 const today = new Date();
@@ -272,11 +275,12 @@ const connectVideoWs = () => {
       try {
         const message = JSON.parse(event.data);
         if (message.type === 'video' && message.frame) {
-          // 将帧数据更新到第一个在线摄像头
-          const onlineCam = cameras.value.find(c => c.status === 'online');
-          if (onlineCam) {
-            onlineCam.frame = `data:image/jpeg;base64,${message.frame}`;
-          }
+          const frameData = `data:image/jpeg;base64,${message.frame}`;
+          // 按 camera_id 精确匹配，匹配不到则给第一个在线摄像头
+          let cam = cameras.value.find(c => c.id === message.camera_id);
+          if (!cam) cam = cameras.value.find(c => c.status === 'online' && !c.frame);
+          if (!cam) cam = cameras.value.find(c => c.status === 'online');
+          if (cam) cam.frame = frameData;
         }
       } catch (err) {
         // ignore parse errors
@@ -316,14 +320,16 @@ const connectFaceWs = () => {
         const message = JSON.parse(event.data);
         if (message.type === 'face' && message.data && message.data.faces) {
           const faces = message.data.faces;
-          // 更新第一个在线摄像头的情绪显示
-          const onlineCam = cameras.value.find(c => c.status === 'online');
-          if (onlineCam && faces.length > 0) {
+          const cameraId = message.data.camera_id;
+          // 按 camera_id 匹配，匹配不到则给第一个在线摄像头
+          let cam = cameras.value.find(c => c.id === cameraId);
+          if (!cam) cam = cameras.value.find(c => c.status === 'online');
+          if (cam && faces.length > 0) {
             const dominant = faces[0].dominant_emotion || 'neutral';
             const emoji = emotionEmojiMap[dominant] || '😐';
             const name = emotionNameMap[dominant] || dominant;
-            onlineCam.emotion = `${emoji} ${name}`;
-            onlineCam.emotionClass = dominant;
+            cam.emotion = `${emoji} ${name}`;
+            cam.emotionClass = dominant;
           }
         }
       } catch (err) {
@@ -385,6 +391,29 @@ const levelMap = { danger: 'high', warning: 'mid', info: 'low' };
 const statusTextMap = { pending: '未处理', handled: '已处理', ignored: '已忽略' };
 const badgeClassMap = { pending: 'badge-danger', handled: 'badge-success', ignored: 'badge-warning' };
 
+// 从数据库加载摄像头列表
+const loadCameras = async () => {
+  try {
+    const res = await devicesApi.getCameraList();
+    const list = res.data || [];
+    cameras.value = list.map(cam => ({
+      id: cam.id,
+      name: cam.name,
+      status: cam.status || 'offline',
+      emotion: cam.status === 'online' ? '检测中' : '离线',
+      emotionClass: '',
+      frame: null,
+    }));
+  } catch (e) {
+    console.error('加载摄像头列表失败:', e);
+  }
+};
+
+// 点击摄像头跳转到实时检测页面
+const goToRealtime = (cam) => {
+  router.push({ path: '/realtime', query: { camera: cam.id } });
+};
+
 // 加载统计数据
 const loadStats = async () => {
   try {
@@ -422,19 +451,6 @@ const loadStats = async () => {
     emotions.value = emList.length > 0 ? emList : [
       { name: '中性', emoji: '😐', pct: 0, color: emotionColorMap.neutral },
     ];
-
-    // 处理摄像头列表
-    cameras.value = [
-      { id: 1, name: '摄像头 1', status: data.online_devices >= 1 ? 'online' : 'offline', emotion: data.online_devices >= 1 ? '😊 检测中' : '离线', emotionClass: data.online_devices >= 1 ? 'happy' : '', frame: null },
-      { id: 2, name: '摄像头 2', status: data.online_devices >= 2 ? 'online' : 'offline', emotion: data.online_devices >= 2 ? '😐 检测中' : '离线', emotionClass: data.online_devices >= 2 ? 'neutral' : '', frame: null },
-      { id: 3, name: '摄像头 3', status: data.online_devices >= 3 ? 'online' : 'offline', emotion: data.online_devices >= 3 ? '😊 检测中' : '离线', emotionClass: '', frame: null },
-    ];
-
-    // 有在线设备时连接视频流
-    if (data.online_devices > 0) {
-      connectVideoWs();
-      connectFaceWs();
-    }
   } catch (error) {
     console.error('加载统计数据失败:', error);
   }
@@ -498,7 +514,15 @@ const loadTrend = async () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
+  // 先加载摄像头列表和连接 WebSocket（核心功能）
+  await loadCameras();
+  const hasOnline = cameras.value.some(c => c.status === 'online');
+  if (hasOnline) {
+    connectVideoWs();
+    connectFaceWs();
+  }
+  // 再加载其他统计数据（非阻塞）
   loadStats();
   loadAccuracy();
   loadAlerts();
