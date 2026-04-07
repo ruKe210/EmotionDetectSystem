@@ -8,7 +8,7 @@
  * @param {string} format - 格式化模板
  * @returns {string} 格式化后的时间字符串
  */
-export function formatTime(timestamp, format = 'YYYY-MM-DD HH:MM:SS') {
+export function formatTime(timestamp, format = 'YYYY-MM-DD HH:mm:ss') {
   const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
   
   const year = date.getFullYear();
@@ -35,7 +35,7 @@ export function formatTime(timestamp, format = 'YYYY-MM-DD HH:MM:SS') {
  * @returns {string} 格式化后的时间字符串
  */
 export function formatTimestamp(timestamp) {
-  return formatTime(timestamp, 'YYYY-MM-DD HH:MM:SS.SSS');
+  return formatTime(timestamp, 'YYYY-MM-DD HH:mm:ss.SSS');
 }
 
 /**
