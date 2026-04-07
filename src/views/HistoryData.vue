@@ -23,7 +23,7 @@
           ></el-date-picker>
         </el-form-item>
         <el-form-item label="情绪类型">
-          <el-select v-model="filterForm.emotion" placeholder="请选择情绪类型">
+          <el-select v-model="filterForm.emotion" placeholder="请选择情绪类型" style="width: 150px">
             <el-option label="全部" value=""></el-option>
             <el-option label="中性" value="neutral"></el-option>
             <el-option label="开心" value="happy"></el-option>
@@ -36,7 +36,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="设备">
-          <el-select v-model="filterForm.device" placeholder="请选择设备">
+          <el-select v-model="filterForm.device" placeholder="请选择设备" style="width: 160px">
             <el-option label="全部" value=""></el-option>
             <el-option v-for="d in deviceOptions" :key="d.id" :label="d.name" :value="d.id"></el-option>
           </el-select>
@@ -60,40 +60,50 @@
         stripe
         v-loading="loading"
       >
-        <el-table-column prop="id" label="ID" width="80"></el-table-column>
-        <el-table-column prop="device" label="设备" width="120">
+        <el-table-column prop="id" label="ID" width="200"></el-table-column>
+        <el-table-column prop="device" label="设备" width="200">
           <template #default="scope">
             {{ getDeviceName(scope.row.device) }}
           </template>
         </el-table-column>
-        <el-table-column prop="timestamp" label="时间" width="180">
+        <el-table-column prop="timestamp" label="时间" width="200">
           <template #default="scope">
             {{ formatTime(scope.row.timestamp) }}
           </template>
         </el-table-column>
-        <el-table-column prop="emotion" label="情绪" width="100">
+        <el-table-column prop="emotion" label="情绪" width="140">
           <template #default="scope">
             <span class="emotion-tag" :class="scope.row.emotion">
               {{ getEmotionName(scope.row.emotion) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="confidence" label="置信度" width="100">
+        <el-table-column prop="confidence" label="置信度" width="140">
           <template #default="scope">
             {{ scope.row.confidence }}%
           </template>
         </el-table-column>
-        <el-table-column prop="valence" label="效价" width="80">
+        <el-table-column prop="valence" label="效价" width="140">
           <template #default="scope">
             {{ scope.row.valence?.toFixed(2) || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="arousal" label="唤醒度" width="80">
+        <el-table-column prop="arousal" label="唤醒度" width="140">
           <template #default="scope">
             {{ scope.row.arousal?.toFixed(2) || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120">
+        <el-table-column prop="pleasure" label="愉悦度" width="140">
+          <template #default="scope">
+            {{ scope.row.pleasure?.toFixed(2) || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="dominance" label="支配度" width="140">
+          <template #default="scope">
+            {{ scope.row.dominance?.toFixed(2) || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="scope">
             <el-button size="small" @click="viewDetail(scope.row)">
               查看
@@ -176,6 +186,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { faceApi } from '../api/face';
 import { devicesApi } from '../api/devices';
 import { formatTime, formatEmotion } from '../utils/format';
@@ -269,20 +280,49 @@ const resetFilter = () => {
 // 导出数据
 const exportData = async () => {
   try {
-    const params = { format: 'json' };
+    const params = {};
     if (filterForm.dateRange && filterForm.dateRange.length === 2) {
       params.startDate = new Date(filterForm.dateRange[0]).toISOString();
       params.endDate = new Date(filterForm.dateRange[1] + ' 23:59:59').toISOString();
     }
+    if (filterForm.emotion) params.emotion = filterForm.emotion;
+    if (filterForm.device) params.device = filterForm.device;
+
     const res = await faceApi.getEmotionHistory({ ...params, page: 1, pageSize: 10000 });
-    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+    const items = res.data.list || [];
+
+    if (items.length === 0) {
+      ElMessage.warning('没有可导出的数据');
+      return;
+    }
+
+    // 构建 CSV
+    const headers = ['ID', '设备', '时间', '情绪', '置信度', '效价', '唤醒度', '愉悦度', '支配度'];
+    const rows = items.map(item => [
+      item.id,
+      item.camera_id,
+      item.timestamp,
+      item.dominant_emotion,
+      item.confidence ? (item.confidence * 100).toFixed(1) : '',
+      item.valence?.toFixed(4) ?? '',
+      item.arousal?.toFixed(4) ?? '',
+      item.pleasure?.toFixed(4) ?? '',
+      item.dominance?.toFixed(4) ?? '',
+    ]);
+
+    // 加 BOM 头让 Excel 正确识别中文
+    const csvContent = '\uFEFF' + [headers, ...rows].map(row =>
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `emotion_history_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `emotion_history_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    ElMessage.success('数据导出成功');
+    ElMessage.success('CSV 导出成功');
   } catch (error) {
     console.error('导出失败:', error);
     ElMessage.error('导出失败');
@@ -410,7 +450,7 @@ onMounted(() => {
 }
 
 :deep(.el-table th) {
-  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%) !important;
   color: #636e72;
   font-size: 12px;
   font-weight: 700;
