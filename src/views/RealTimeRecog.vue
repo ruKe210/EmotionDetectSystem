@@ -3,27 +3,14 @@
     <div class="page-header">
       <h2>实时情绪识别</h2>
       <div class="header-actions">
-        <el-button
-          type="primary"
-          @click="startDetection"
-          v-if="!isRunning"
-        >
+        <el-button type="primary" @click="startDetection" v-if="!isRunning">
           <i class="el-icon-video-play"></i> 开始检测
         </el-button>
-        <el-button
-          type="danger"
-          @click="stopDetection"
-          v-else
-        >
+        <el-button type="danger" @click="stopDetection" v-else>
           <i class="el-icon-video-pause"></i> 停止检测
         </el-button>
         <el-select v-model="cameraId" class="ml-2" @change="changeCamera">
-          <el-option
-            v-for="camera in cameras"
-            :key="camera.id"
-            :label="camera.name"
-            :value="camera.id"
-          ></el-option>
+          <el-option v-for="camera in cameras" :key="camera.id" :label="camera.name" :value="camera.id"></el-option>
         </el-select>
       </div>
     </div>
@@ -53,21 +40,37 @@
               <h3>情绪变化趋势</h3>
             </div>
             <div class="chart-container">
-              <EmotionChart
-                title="情绪趋势"
-                :data="emotionData"
-                :trend-data="trendData"
-              />
+              <EmotionChart title="情绪趋势" :data="emotionData" :trend-data="trendData" />
             </div>
           </div>
         </div>
       </div>
 
       <div class="side-panel">
-        <GlobalStats
-          :stats="globalStats"
-          @refresh="refreshStats"
-        />
+        <!-- 摄像头切换列表 -->
+        <div class="camera-switch-list">
+          <div class="card-header">
+            <h3>摄像头列表</h3>
+            <span class="face-count">{{ cameras.length }} 个</span>
+          </div>
+          <div class="camera-thumbs">
+            <div
+              v-for="cam in cameras" :key="cam.id"
+              class="camera-thumb" :class="{ active: cameraId === cam.id }"
+              @click="changeCamera(cam.id)"
+            >
+              <div class="thumb-indicator" :class="cameraId === cam.id ? 'current' : ''"></div>
+              <div class="thumb-info">
+                <div class="thumb-name">{{ cam.name }}</div>
+                <div class="thumb-type">{{ cam.type === 'rtsp' ? 'RTSP' : 'USB' }}</div>
+              </div>
+              <span v-if="cameraId === cam.id" class="thumb-badge">当前</span>
+            </div>
+            <div v-if="cameras.length === 0" class="no-cameras">暂无摄像头</div>
+          </div>
+        </div>
+
+        <GlobalStats :stats="globalStats" @refresh="refreshStats" />
 
         <div class="face-list">
           <div class="card-header">
@@ -75,17 +78,10 @@
             <span class="face-count">{{ currentFaces.length }} 人</span>
           </div>
           <div class="face-items">
-            <div
-              v-for="(face, index) in currentFaces"
-              :key="index"
-              class="face-item"
-              @click="selectFace(face, index)"
-            >
+            <div v-for="(face, index) in currentFaces" :key="index" class="face-item" @click="selectFace(face, index)">
               <div class="face-info">
                 <div class="face-id">人脸 {{ index + 1 }}</div>
-                <div class="emotion-tag" :class="getEmotionClass(face)">
-                  {{ getMainEmotion(face) }}
-                </div>
+                <div class="emotion-tag" :class="getEmotionClass(face)">{{ getMainEmotion(face) }}</div>
               </div>
               <div class="face-meta">
                 <div class="confidence">{{ getConfidence(face) }}%</div>
@@ -94,17 +90,11 @@
                 </div>
               </div>
             </div>
-            <div v-if="currentFaces.length === 0" class="no-faces">
-              未检测到人脸
-            </div>
+            <div v-if="currentFaces.length === 0" class="no-faces">未检测到人脸</div>
           </div>
         </div>
 
-        <FaceDetail
-          v-if="selectedFace"
-          v-model="showFaceDetail"
-          :face-data="selectedFace"
-        />
+        <FaceDetail v-if="selectedFace" v-model="showFaceDetail" :face-data="selectedFace" />
       </div>
     </div>
   </div>
@@ -134,108 +124,79 @@ const showFaceDetail = ref(false);
 const globalStats = computed(() => faceStore.globalStats);
 
 const emotionData = reactive({
-  happy: 0,
-  sad: 0,
-  angry: 0,
-  neutral: 0,
-  fearful: 0,
-  surprised: 0,
-  disgusted: 0,
-  contempt: 0
+  happy: 0, sad: 0, angry: 0, neutral: 0,
+  fearful: 0, surprised: 0, disgusted: 0, contempt: 0
 });
 
-const trendData = reactive({
-  times: [],
-  values: []
-});
+const trendData = reactive({ times: [], values: [] });
 
-// 开始检测
 const startDetection = () => {
   isRunning.value = true;
   faceStore.startDetection();
 };
 
-// 停止检测
 const stopDetection = () => {
   isRunning.value = false;
   faceStore.stopDetection();
 };
 
-// 切换摄像头
 const changeCamera = (id) => {
   cameraId.value = id;
   faceStore.setCurrentCamera(id);
 };
 
-// 处理人脸检测结果 (来自 WebSocket, 包含后端计算的 VA/PAD)
 const handleFaceDetected = (faces) => {
   currentFaces.value = faces;
   faceStore.updateCurrentFaces(faces);
-
   updateEmotionData(faces);
   updateTrendData(faces);
 };
 
-// 处理检测错误
 const handleDetectionError = (error) => {
   console.error('检测错误:', error);
   faceStore.setDetectionError(error);
 };
 
-// 更新情绪数据
 const updateEmotionData = (faces) => {
   const distribution = {
     happy: 0, sad: 0, angry: 0, neutral: 0,
     fearful: 0, surprised: 0, disgusted: 0, contempt: 0
   };
-
   faces.forEach(face => {
     const emotion = face.dominant_emotion;
     if (emotion && distribution[emotion] !== undefined) {
       distribution[emotion]++;
     } else if (face.expressions) {
-      const maxExpression = Object.entries(face.expressions)
-        .reduce((max, [key, value]) => value > max.value ? { key, value } : max, { key: 'neutral', value: 0 });
-      if (distribution[maxExpression.key] !== undefined) {
-        distribution[maxExpression.key]++;
-      }
+      const max = Object.entries(face.expressions)
+        .reduce((m, [k, v]) => v > m.value ? { key: k, value: v } : m, { key: 'neutral', value: 0 });
+      if (distribution[max.key] !== undefined) distribution[max.key]++;
     }
   });
-
   Object.assign(emotionData, distribution);
 };
 
-// 更新趋势数据 (使用平均 valence 值)
 const updateTrendData = (faces) => {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
   let avgValence = 0;
   if (faces.length > 0) {
-    const sum = faces.reduce((acc, f) => acc + (f.valence || 0), 0);
-    avgValence = sum / faces.length;
+    avgValence = faces.reduce((acc, f) => acc + (f.valence || 0), 0) / faces.length;
   }
-
   trendData.times.push(timeStr);
-  // 映射 valence [-1,1] 到 [0,100]
   trendData.values.push(Math.round((avgValence + 1) * 50));
-
   if (trendData.times.length > 30) {
     trendData.times.shift();
     trendData.values.shift();
   }
 };
 
-// 选择人脸 - 使用后端传来的真实 VA/PAD 数据
 const selectFace = (face, index) => {
   selectedFace.value = {
     id: face.face_id || `face-${index}-${Date.now()}`,
     timestamp: Date.now(),
     ...face,
-    // 二维情感 (来自后端模型直接输出)
     valence: face.valence ?? 0,
     arousal: face.arousal ?? 0,
-    // 三维情感 PAD (来自后端模型计算)
     pleasure: face.pleasure ?? face.valence ?? 0,
     pad_arousal: face.pad_arousal ?? face.arousal ?? 0,
     dominance: face.dominance ?? 0,
@@ -243,15 +204,12 @@ const selectFace = (face, index) => {
   showFaceDetail.value = true;
 };
 
-// 获取主要情绪
 const getMainEmotion = (face) => {
-  if (face.dominant_emotion) {
-    return emotionMap[face.dominant_emotion] || face.dominant_emotion;
-  }
+  if (face.dominant_emotion) return emotionMap[face.dominant_emotion] || face.dominant_emotion;
   if (!face.expressions) return '未知';
-  const maxExpression = Object.entries(face.expressions)
-    .reduce((max, [key, value]) => value > max.value ? { key, value } : max, { key: 'neutral', value: 0 });
-  return emotionMap[maxExpression.key] || maxExpression.key;
+  const max = Object.entries(face.expressions)
+    .reduce((m, [k, v]) => v > m.value ? { key: k, value: v } : m, { key: 'neutral', value: 0 });
+  return emotionMap[max.key] || max.key;
 };
 
 const emotionMap = {
@@ -259,25 +217,22 @@ const emotionMap = {
   fearful: '恐惧', disgusted: '厌恶', surprised: '惊讶', contempt: '蔑视'
 };
 
-// 获取置信度
 const getConfidence = (face) => {
   if (face.emotion_confidence) return Math.round(face.emotion_confidence * 100);
   if (!face.expressions) return 0;
-  const maxExpression = Object.entries(face.expressions)
-    .reduce((max, [key, value]) => value > max.value ? { key, value } : max, { key: 'neutral', value: 0 });
-  return Math.round(maxExpression.value * 100);
+  const max = Object.entries(face.expressions)
+    .reduce((m, [k, v]) => v > m.value ? { key: k, value: v } : m, { key: 'neutral', value: 0 });
+  return Math.round(max.value * 100);
 };
 
-// 获取情绪类名
 const getEmotionClass = (face) => {
   if (face.dominant_emotion) return face.dominant_emotion;
   if (!face.expressions) return 'neutral';
-  const maxExpression = Object.entries(face.expressions)
-    .reduce((max, [key, value]) => value > max.value ? { key, value } : max, { key: 'neutral', value: 0 });
-  return maxExpression.key;
+  const max = Object.entries(face.expressions)
+    .reduce((m, [k, v]) => v > m.value ? { key: k, value: v } : m, { key: 'neutral', value: 0 });
+  return max.key;
 };
 
-// 刷新统计数据
 const refreshStats = () => {
   faceStore.updateGlobalStats({
     onlineDevices: Math.floor(Math.random() * 10) + 1,
@@ -289,21 +244,13 @@ const refreshStats = () => {
   });
 };
 
-// 获取真实摄像头列表
 const loadCameras = async () => {
   try {
-    // 从后端数据库加载摄像头列表
     const { devicesApi } = await import('../api/devices');
     const res = await devicesApi.getCameraList();
     const list = res.data || [];
-
     if (list.length > 0) {
-      cameras.value = list.map(cam => ({
-        id: cam.id,
-        name: cam.name,
-        type: cam.type,
-      }));
-      // 如果 URL 带了 camera 参数，自动选中
+      cameras.value = list.map(cam => ({ id: cam.id, name: cam.name, type: cam.type }));
       const queryCam = route.query.camera;
       if (queryCam && cameras.value.find(c => c.id === queryCam)) {
         cameraId.value = queryCam;
@@ -332,269 +279,118 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.real-time-recog {
-  padding: 0;
-  animation: fade-up 0.3s ease;
-}
+.real-time-recog { padding: 0; animation: fade-up 0.3s ease; }
+@keyframes fade-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 
-@keyframes fade-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .page-header h2 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 600;
-  color: #3d4852;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  letter-spacing: -0.5px;
+  margin: 0; font-size: 22px; font-weight: 600; color: #3d4852;
+  display: flex; align-items: center; gap: 12px; letter-spacing: -0.5px;
 }
-
 .page-header h2::before {
-  content: '';
-  width: 4px;
-  height: 28px;
+  content: ''; width: 4px; height: 28px;
   background: linear-gradient(135deg, var(--mint), var(--primary));
-  border-radius: 4px;
-  display: inline-block;
-  box-shadow: 0 2px 8px rgba(95, 212, 200, 0.3);
+  border-radius: 4px; display: inline-block;
 }
+.header-actions { display: flex; align-items: center; gap: 10px; }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: 20px;
-}
-
-.main-content {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.video-section {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
+.content-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+.main-content { display: flex; flex-direction: column; gap: 20px; }
+.video-section { display: flex; flex-direction: column; gap: 20px; }
 
 .video-card {
-  background: white;
-  border-radius: 14px;
-  box-shadow: 0 2px 20px rgba(108, 142, 240, 0.08);
-  border: 1px solid rgba(108, 142, 240, 0.06);
-  overflow: hidden;
-  transition: box-shadow 0.3s ease;
+  background: white; border-radius: 14px;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08);
+  border: 1px solid rgba(108,142,240,0.06);
+  overflow: hidden; transition: box-shadow 0.3s ease;
 }
-
-.video-card:hover {
-  box-shadow: 0 8px 30px rgba(108, 142, 240, 0.15);
-}
+.video-card:hover { box-shadow: 0 8px 30px rgba(108,142,240,0.15); }
 
 .video-header {
   padding: 16px 20px;
   background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
   border-bottom: 1px solid #eef1ff;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: flex; justify-content: space-between; align-items: center;
 }
-
-.video-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: #2d3436;
-}
+.video-header h3 { margin: 0; font-size: 15px; font-weight: 700; color: #2d3436; }
 
 .status-badge {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; gap: 5px;
 }
+.status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+.status-running { background: var(--green-light); color: var(--green); }
+.status-running::before { background: var(--green); animation: pulse-dot 1.5s infinite; }
+@keyframes pulse-dot { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
+.status-stopped { background: var(--pink-light); color: var(--pink); }
+.status-stopped::before { background: var(--pink); }
 
-.status-badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-}
-
-.status-running {
-  background: var(--green-light);
-  color: var(--green);
-}
-
-.status-running::before {
-  background: var(--green);
-  animation: pulse-dot 1.5s infinite;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.3); opacity: 0.7; }
-}
-
-.status-stopped {
-  background: var(--pink-light);
-  color: var(--pink);
-}
-
-.status-stopped::before {
-  background: var(--pink);
-}
-
-.video-container {
-  padding: 16px;
-  height: 480px;
-}
+.video-container { padding: 12px; height: 480px; }
 
 .emotion-trend {
-  background: white;
-  border-radius: 14px;
-  box-shadow: 0 2px 20px rgba(108, 142, 240, 0.08);
-  border: 1px solid rgba(108, 142, 240, 0.06);
-  overflow: hidden;
+  background: white; border-radius: 14px;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08);
+  border: 1px solid rgba(108,142,240,0.06); overflow: hidden;
 }
 
 .card-header {
   padding: 16px 20px;
   background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
   border-bottom: 1px solid #eef1ff;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: flex; justify-content: space-between; align-items: center;
 }
-
-.card-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  color: #2d3436;
-}
-
+.card-header h3 { margin: 0; font-size: 15px; font-weight: 700; color: #2d3436; }
 .face-count {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--primary);
-  background: var(--primary-light);
-  padding: 3px 10px;
-  border-radius: 20px;
+  font-size: 12px; font-weight: 700; color: var(--primary);
+  background: var(--primary-light); padding: 3px 10px; border-radius: 20px;
 }
+.chart-container { padding: 16px; height: 280px; }
 
-.chart-container {
-  padding: 16px;
-  height: 280px;
+.side-panel { display: flex; flex-direction: column; gap: 16px; }
+
+/* 摄像头切换列表 */
+.camera-switch-list {
+  background: white; border-radius: 14px;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08);
+  border: 1px solid rgba(108,142,240,0.06); overflow: hidden;
 }
-
-.side-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.camera-thumbs { padding: 8px; max-height: 220px; overflow-y: auto; }
+.camera-thumb {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1.5px solid #eef1ff; border-radius: 10px;
+  margin-bottom: 6px; cursor: pointer; transition: all 0.2s ease; background: #fafbff;
 }
+.camera-thumb:hover { border-color: var(--primary); background: var(--primary-light); transform: translateX(2px); }
+.camera-thumb.active { border-color: var(--primary); background: var(--primary-light); box-shadow: 0 2px 8px rgba(108,142,240,0.15); }
+.thumb-indicator { width: 8px; height: 8px; border-radius: 50%; background: #b2bec3; flex-shrink: 0; }
+.thumb-indicator.current { background: var(--green); animation: pulse-dot 1.5s infinite; }
+.thumb-info { flex: 1; min-width: 0; }
+.thumb-name { font-size: 13px; font-weight: 700; color: #2d3436; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thumb-type { font-size: 11px; color: #b2bec3; }
+.thumb-badge { font-size: 10px; font-weight: 700; color: var(--primary); background: white; padding: 2px 8px; border-radius: 10px; flex-shrink: 0; }
+.no-cameras { text-align: center; padding: 20px; color: #b2bec3; font-size: 13px; }
 
+/* 人脸列表 */
 .face-list {
-  background: white;
-  border-radius: 14px;
-  box-shadow: 0 2px 20px rgba(108, 142, 240, 0.08);
-  border: 1px solid rgba(108, 142, 240, 0.06);
-  overflow: hidden;
+  background: white; border-radius: 14px;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08);
+  border: 1px solid rgba(108,142,240,0.06); overflow: hidden;
 }
-
-.face-items {
-  padding: 12px;
-  max-height: 380px;
-  overflow-y: auto;
-}
-
+.face-items { padding: 12px; max-height: 380px; overflow-y: auto; }
 .face-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  border: 1.5px solid #eef1ff;
-  border-radius: 10px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  background: #fafbff;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px; border: 1.5px solid #eef1ff; border-radius: 10px;
+  margin-bottom: 8px; cursor: pointer; transition: all 0.25s ease; background: #fafbff;
 }
+.face-item:hover { border-color: var(--primary); background: var(--primary-light); transform: translateX(2px); }
+.face-info { display: flex; align-items: center; gap: 10px; }
+.face-id { font-size: 13px; font-weight: 700; color: #2d3436; }
+.face-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.confidence { font-size: 13px; font-weight: 800; color: var(--green); background: var(--green-light); padding: 2px 8px; border-radius: 10px; }
+.va-mini { font-size: 10px; color: #909399; font-family: monospace; }
+.no-faces { text-align: center; padding: 36px 20px; color: #b2bec3; font-size: 14px; }
 
-.face-item:hover {
-  border-color: var(--primary);
-  background: var(--primary-light);
-  transform: translateX(2px);
-}
-
-.face-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.face-id {
-  font-size: 13px;
-  font-weight: 700;
-  color: #2d3436;
-}
-
-.face-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.confidence {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--green);
-  background: var(--green-light);
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.va-mini {
-  font-size: 10px;
-  color: #909399;
-  font-family: monospace;
-}
-
-.no-faces {
-  text-align: center;
-  padding: 36px 20px;
-  color: #b2bec3;
-  font-size: 14px;
-}
-
-.emotion-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
+.emotion-tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 .emotion-tag.neutral { background: #f0f0f0; color: #636e72; }
 .emotion-tag.happy { background: #fff9e6; color: #e17055; }
 .emotion-tag.sad { background: #eef1ff; color: var(--primary); }
@@ -605,43 +401,14 @@ onMounted(async () => {
 .emotion-tag.contempt { background: #f0e6ff; color: #6c5ce7; }
 
 @media (max-width: 1200px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .side-panel {
-    order: -1;
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .content-grid { grid-template-columns: 1fr; }
+  .side-panel { order: -1; display: grid; grid-template-columns: repeat(2, 1fr); }
 }
-
 @media (max-width: 768px) {
-  .real-time-recog { padding: 0; }
-
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .header-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .video-container {
-    height: 300px;
-    padding: 10px;
-  }
-
-  .chart-container {
-    height: 220px;
-    padding: 10px;
-  }
-
-  .side-panel {
-    grid-template-columns: 1fr;
-  }
+  .page-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .header-actions { width: 100%; justify-content: space-between; }
+  .video-container { height: 300px; padding: 8px; }
+  .chart-container { height: 220px; padding: 10px; }
+  .side-panel { grid-template-columns: 1fr; }
 }
 </style>
