@@ -127,7 +127,12 @@ function scheduleVideoReconnect() {
 
 function disconnectVideo() {
   if (videoReconnectTimer) { clearTimeout(videoReconnectTimer); videoReconnectTimer = null }
-  if (videoWs) { try { videoWs.close() } catch (_) {} videoWs = null }
+  if (videoWs) {
+    videoWs.onclose = null  // 防止触发重连
+    videoWs.onerror = null
+    try { videoWs.close() } catch (_) {}
+    videoWs = null
+  }
 }
 
 // --- 人脸数据 WebSocket ---
@@ -169,7 +174,12 @@ function connectFace() {
 
 function disconnectFace() {
   if (faceReconnectTimer) { clearTimeout(faceReconnectTimer); faceReconnectTimer = null }
-  if (faceWs) { try { faceWs.close() } catch (_) {} faceWs = null }
+  if (faceWs) {
+    faceWs.onclose = null  // 防止触发重连
+    faceWs.onerror = null
+    try { faceWs.close() } catch (_) {}
+    faceWs = null
+  }
 }
 
 // --- 重连所有 ---

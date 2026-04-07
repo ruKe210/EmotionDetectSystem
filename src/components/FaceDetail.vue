@@ -33,70 +33,56 @@
           </div>
         </div>
 
-        <!-- 情感模型 Tab -->
+        <!-- 二维情感: Valence-Arousal -->
         <div class="emotion-model">
-          <h5>连续情感模型</h5>
-          <div class="model-tabs">
-            <el-tabs v-model="activeTab">
-              <!-- 二维: Valence-Arousal -->
-              <el-tab-pane label="二维情感 (VA)" name="va">
-                <div class="model-chart">
-                  <canvas ref="vaChart"></canvas>
-                </div>
-                <div class="model-values">
-                  <div class="value-item">
-                    <span class="label">效价 (Valence):</span>
-                    <span class="value" :class="getValenceClass(faceData.valence)">
-                      {{ formatDimValue(faceData.valence) }}
-                    </span>
-                    <span class="desc">{{ getValenceDesc(faceData.valence) }}</span>
-                  </div>
-                  <div class="value-item">
-                    <span class="label">唤醒度 (Arousal):</span>
-                    <span class="value" :class="getArousalClass(faceData.arousal)">
-                      {{ formatDimValue(faceData.arousal) }}
-                    </span>
-                    <span class="desc">{{ getArousalDesc(faceData.arousal) }}</span>
-                  </div>
-                </div>
-              </el-tab-pane>
-
-              <!-- 三维: PAD -->
-              <el-tab-pane label="三维情感 (PAD)" name="pad">
-                <div class="model-chart">
-                  <canvas ref="padChart"></canvas>
-                </div>
-                <div class="model-values">
-                  <div class="value-item">
-                    <span class="label">愉悦度 (Pleasure):</span>
-                    <span class="value" :class="getValenceClass(faceData.pleasure)">
-                      {{ formatDimValue(faceData.pleasure) }}
-                    </span>
-                  </div>
-                  <div class="value-item">
-                    <span class="label">唤醒度 (Arousal):</span>
-                    <span class="value" :class="getArousalClass(faceData.pad_arousal)">
-                      {{ formatDimValue(faceData.pad_arousal) }}
-                    </span>
-                  </div>
-                  <div class="value-item">
-                    <span class="label">支配度 (Dominance):</span>
-                    <span class="value" :class="getDominanceClass(faceData.dominance)">
-                      {{ formatDimValue(faceData.dominance) }}
-                    </span>
-                    <span class="desc">{{ getDominanceDesc(faceData.dominance) }}</span>
-                  </div>
-                </div>
-              </el-tab-pane>
-            </el-tabs>
+          <h5>二维情感模型 (Valence-Arousal)</h5>
+          <div class="model-chart model-chart-large">
+            <canvas ref="vaChart"></canvas>
+          </div>
+          <div class="model-values">
+            <div class="value-item">
+              <span class="label">效价 (Valence):</span>
+              <span class="value" :class="getValenceClass(faceData.valence)">
+                {{ formatDimValue(faceData.valence) }}
+              </span>
+              <span class="desc">{{ getValenceDesc(faceData.valence) }}</span>
+            </div>
+            <div class="value-item">
+              <span class="label">唤醒度 (Arousal):</span>
+              <span class="value" :class="getArousalClass(faceData.arousal)">
+                {{ formatDimValue(faceData.arousal) }}
+              </span>
+              <span class="desc">{{ getArousalDesc(faceData.arousal) }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- 情绪趋势 -->
-        <div class="emotion-trend">
-          <h5>情绪变化趋势</h5>
-          <div class="trend-chart">
-            <canvas ref="trendChart"></canvas>
+        <!-- 三维情感: PAD -->
+        <div class="emotion-model">
+          <h5>三维情感模型 (PAD)</h5>
+          <div class="model-chart model-chart-large">
+            <canvas ref="padChart"></canvas>
+          </div>
+          <div class="model-values">
+            <div class="value-item">
+              <span class="label">愉悦度 (Pleasure):</span>
+              <span class="value" :class="getValenceClass(faceData.pleasure)">
+                {{ formatDimValue(faceData.pleasure) }}
+              </span>
+            </div>
+            <div class="value-item">
+              <span class="label">唤醒度 (Arousal):</span>
+              <span class="value" :class="getArousalClass(faceData.pad_arousal)">
+                {{ formatDimValue(faceData.pad_arousal) }}
+              </span>
+            </div>
+            <div class="value-item">
+              <span class="label">支配度 (Dominance):</span>
+              <span class="value" :class="getDominanceClass(faceData.dominance)">
+                {{ formatDimValue(faceData.dominance) }}
+              </span>
+              <span class="desc">{{ getDominanceDesc(faceData.dominance) }}</span>
+            </div>
           </div>
         </div>
       </div>

@@ -282,6 +282,7 @@ const updateVAChart = () => {
   const a = vaHistory.arousal.length > 0 ? vaHistory.arousal[vaHistory.arousal.length - 1] : 0;
 
   vaChart.setOption({
+    animation: false,
     grid: { left: 55, right: 30, top: 40, bottom: 50 },
     xAxis: {
       name: 'Valence (效价)', nameLocation: 'center', nameGap: 30,
@@ -321,6 +322,7 @@ const updatePADChart = () => {
   if (!padChart) return;
   const p = padValues.pleasure, a = padValues.arousal, d = padValues.dominance;
   padChart.setOption({
+    animation: false,
     radar: {
       indicator: [
         { name: `愉悦度\n${p.toFixed(2)}`, max: 1, min: -1 },
@@ -365,6 +367,7 @@ const updateOverviewChart = () => {
   const colors = order.map(k => emotionColors[k]);
 
   overviewChart.setOption({
+    animation: false,
     grid: { left: 60, right: 50, top: 10, bottom: 30 },
     xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
     yAxis: { type: 'category', data: labels, inverse: true, axisLabel: { fontSize: 12, fontWeight: 600 } },
