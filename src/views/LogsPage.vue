@@ -329,10 +329,10 @@ onMounted(() => {
 }
 
 .log-stat-item:hover { transform: translateY(-2px); }
-.log-stat-item.op { border-color: var(--lavender-light); }
+.log-stat-item.op { border-color: #f0e6ff; }
 .log-stat-item.sys { border-color: #eef1ff; }
-.log-stat-item.rec { border-color: var(--green-light); }
-.log-stat-item.alert { border-color: var(--pink-light); }
+.log-stat-item.rec { border-color: #e0f5ee; }
+.log-stat-item.alert { border-color: #ffe0ec; }
 
 .ls-icon {
   width: 36px;
@@ -344,14 +344,14 @@ onMounted(() => {
 }
 
 .ls-icon :deep(svg) { width: 18px; height: 18px; }
-.log-stat-item.op .ls-icon { background: var(--lavender-light); }
-.log-stat-item.op .ls-icon :deep(svg) { stroke: var(--lavender); }
-.log-stat-item.sys .ls-icon { background: var(--primary-light); }
-.log-stat-item.sys .ls-icon :deep(svg) { stroke: var(--primary); }
-.log-stat-item.rec .ls-icon { background: var(--green-light); }
-.log-stat-item.rec .ls-icon :deep(svg) { stroke: var(--green); }
-.log-stat-item.alert .ls-icon { background: var(--pink-light); }
-.log-stat-item.alert .ls-icon :deep(svg) { stroke: var(--pink); }
+.log-stat-item.op .ls-icon { background: #f0e6ff; }
+.log-stat-item.op .ls-icon :deep(svg) { stroke: #6c5ce7; }
+.log-stat-item.sys .ls-icon { background: #eef1ff; }
+.log-stat-item.sys .ls-icon :deep(svg) { stroke: #6c8ef0; }
+.log-stat-item.rec .ls-icon { background: #e0f5ee; }
+.log-stat-item.rec .ls-icon :deep(svg) { stroke: #00b894; }
+.log-stat-item.alert .ls-icon { background: #ffe0ec; }
+.log-stat-item.alert .ls-icon :deep(svg) { stroke: #e84393; }
 
 .ls-count { font-size: 22px; font-weight: 800; color: #2d3436; }
 .ls-label { font-size: 11px; color: #b2bec3; font-weight: 600; }

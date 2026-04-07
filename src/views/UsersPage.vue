@@ -384,8 +384,8 @@ onMounted(() => {
 
 .role-stat:hover { transform: translateY(-2px); }
 .role-stat.admin { border-color: #eef1ff; }
-.role-stat.operator { border-color: var(--mint-light); }
-.role-stat.viewer { border-color: var(--yellow-light); }
+.role-stat.operator { border-color: #eef1ff; }
+.role-stat.viewer { border-color: #eef1ff; }
 
 .rs-avatar {
   width: 44px;
@@ -430,8 +430,8 @@ onMounted(() => {
   transition: all 0.2s ease;
 }
 
-.filter-tab.active { background: var(--primary); border-color: var(--primary); color: white; }
-.filter-tab:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+.filter-tab.active { background: #6c8ef0; border-color: #6c8ef0; color: white; }
+.filter-tab:hover:not(.active) { border-color: #6c8ef0; color: #6c8ef0; }
 
 .p0 { padding: 0; }
 
@@ -475,9 +475,9 @@ onMounted(() => {
   font-weight: 700;
 }
 
-.role-badge.admin { background: var(--primary-light); color: var(--primary); }
-.role-badge.operator { background: var(--mint-light); color: var(--mint); }
-.role-badge.viewer { background: var(--yellow-light); color: #e17055; }
+.role-badge.admin { background: #eef1ff; color: #6c8ef0; }
+.role-badge.operator { background: #e0f5ee; color: #00b894; }
+.role-badge.viewer { background: #fff8ed; color: #e17055; }
 
 .email-cell { font-size: 12px; color: #636e72; }
 .time-cell { font-size: 12px; color: #b2bec3; white-space: nowrap; }
@@ -498,8 +498,8 @@ onMounted(() => {
   border-radius: 50%;
 }
 
-.status-indicator.online { color: var(--green); background: var(--green-light); }
-.status-indicator.online .status-dot-sm { background: var(--green); animation: pulse 2s infinite; }
+.status-indicator.online { color: #00b894; background: #e0f5ee; }
+.status-indicator.online .status-dot-sm { background: #00b894; animation: pulse 2s infinite; }
 .status-indicator.offline { color: #b2bec3; background: #f8f9fa; }
 .status-indicator.offline .status-dot-sm { background: #b2bec3; }
 
