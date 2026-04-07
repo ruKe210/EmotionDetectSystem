@@ -279,38 +279,49 @@ const resetFilter = () => {
 
 // 导出数据
 const exportData = async () => {
+  // 用当前筛选条件，分页拉取所有数据
+  const allItems = [];
+  let page = 1;
+  const size = 100;
+
   try {
-    const params = {};
-    if (filterForm.dateRange && filterForm.dateRange.length === 2) {
-      params.startDate = new Date(filterForm.dateRange[0]).toISOString();
-      params.endDate = new Date(filterForm.dateRange[1] + ' 23:59:59').toISOString();
+    ElMessage.info('正在导出，请稍候...');
+
+    while (true) {
+      const params = { page, pageSize: size };
+      if (filterForm.dateRange && filterForm.dateRange.length === 2) {
+        params.startDate = new Date(filterForm.dateRange[0]).toISOString();
+        params.endDate = new Date(filterForm.dateRange[1] + ' 23:59:59').toISOString();
+      }
+      if (filterForm.emotion) params.emotion = filterForm.emotion;
+      if (filterForm.device) params.device = filterForm.device;
+
+      const res = await faceApi.getEmotionHistory(params);
+      const items = res.data.list || [];
+      allItems.push(...items);
+
+      if (items.length < size || allItems.length >= res.data.total) break;
+      page++;
     }
-    if (filterForm.emotion) params.emotion = filterForm.emotion;
-    if (filterForm.device) params.device = filterForm.device;
 
-    const res = await faceApi.getEmotionHistory({ ...params, page: 1, pageSize: 10000 });
-    const items = res.data.list || [];
-
-    if (items.length === 0) {
+    if (allItems.length === 0) {
       ElMessage.warning('没有可导出的数据');
       return;
     }
 
-    // 构建 CSV
     const headers = ['ID', '设备', '时间', '情绪', '置信度', '效价', '唤醒度', '愉悦度', '支配度'];
-    const rows = items.map(item => [
-      item.id,
-      item.camera_id,
-      item.timestamp,
-      item.dominant_emotion,
+    const rows = allItems.map(item => [
+      item.id || '',
+      item.camera_id || '',
+      item.timestamp || '',
+      item.dominant_emotion || '',
       item.confidence ? (item.confidence * 100).toFixed(1) : '',
-      item.valence?.toFixed(4) ?? '',
-      item.arousal?.toFixed(4) ?? '',
-      item.pleasure?.toFixed(4) ?? '',
-      item.dominance?.toFixed(4) ?? '',
+      item.valence != null ? item.valence.toFixed(4) : '',
+      item.arousal != null ? item.arousal.toFixed(4) : '',
+      item.pleasure != null ? item.pleasure.toFixed(4) : '',
+      item.dominance != null ? item.dominance.toFixed(4) : '',
     ]);
 
-    // 加 BOM 头让 Excel 正确识别中文
     const csvContent = '\uFEFF' + [headers, ...rows].map(row =>
       row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
     ).join('\n');
@@ -320,12 +331,14 @@ const exportData = async () => {
     const a = document.createElement('a');
     a.href = url;
     a.download = `emotion_history_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    ElMessage.success('CSV 导出成功');
-  } catch (error) {
-    console.error('导出失败:', error);
-    ElMessage.error('导出失败');
+    ElMessage.success(`已导出 ${allItems.length} 条数据`);
+  } catch (err) {
+    console.error('导出失败:', err);
+    ElMessage.error('导出失败，请检查控制台');
   }
 };
 
