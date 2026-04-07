@@ -106,7 +106,7 @@ const tick = () => {
   clock.value = [d.getHours(), d.getMinutes(), d.getSeconds()]
     .map(n => String(n).padStart(2, '0')).join(':')
 }
-onMounted(() => { tick(); timerId = setInterval(tick, 1000) })
+onMounted(() => { tick(); timerId = setInterval(tick, 1000); loadAlertCount(); })
 onBeforeUnmount(() => clearInterval(timerId))
 
 // --- 布局控制 ---
@@ -127,18 +127,31 @@ const pageTitle = computed(() => titles[route.path] || '控制台')
 
 const logout = () => { systemStore.clearUser(); router.push('/login') }
 
+// --- 告警角标 ---
+const alertCount = ref(null)
+const loadAlertCount = async () => {
+  try {
+    const { faceApi } = await import('./api/face')
+    const res = await faceApi.getGlobalStats()
+    const count = res.data.today_alerts || 0
+    alertCount.value = count > 0 ? String(count) : null
+  } catch (e) {
+    alertCount.value = null
+  }
+}
+
 // --- 导航项 ---
-const navItems = [
+const navItems = computed(() => [
   { path: '/', label: '控制台', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>` },
   { path: '/realtime', label: '实时检测', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>` },
   { path: '/history', label: '历史记录', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>` },
   { path: '/reports', label: '统计报表', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>` },
   { path: '/device', label: '设备管理', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>` },
-  { path: '/alerts', label: '告警管理', badge: '3', icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` },
+  { path: '/alerts', label: '告警管理', badge: alertCount.value, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>` },
   { path: '/logs', label: '日志管理', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>` },
   { path: '/users', label: '用户管理', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>` },
   { path: '/config', label: '系统配置', badge: null, icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M12 2v2M12 20v2M20 12h2M2 12h2M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41"/></svg>` },
-]
+])
 </script>
 
 <style scoped>
