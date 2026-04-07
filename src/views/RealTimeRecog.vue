@@ -50,20 +50,16 @@
               <h3>情绪评价指标</h3>
             </div>
             <div class="indicator-tabs">
-              <el-tabs v-model="indicatorTab">
-                <!-- 一维：离散情绪分布 -->
-                <el-tab-pane label="离散情绪 (1D)" name="discrete">
-                  <div class="indicator-chart" ref="discreteChartRef"></div>
-                </el-tab-pane>
-                <!-- 二维：Valence-Arousal 实时曲线 -->
-                <el-tab-pane label="二维情感 (VA)" name="va">
-                  <div class="indicator-chart" ref="vaChartRef"></div>
-                </el-tab-pane>
-                <!-- 三维：PAD 雷达图 -->
-                <el-tab-pane label="三维情感 (PAD)" name="pad">
-                  <div class="indicator-chart" ref="padChartRef"></div>
-                </el-tab-pane>
-              </el-tabs>
+              <div class="indicator-btns">
+                <button class="ind-btn" :class="{ active: indicatorTab === 'overview' }" @click="indicatorTab = 'overview'">整体分布</button>
+                <button class="ind-btn" :class="{ active: indicatorTab === 'discrete' }" @click="indicatorTab = 'discrete'">离散情绪 (1D)</button>
+                <button class="ind-btn" :class="{ active: indicatorTab === 'va' }" @click="indicatorTab = 'va'">二维情感 (VA)</button>
+                <button class="ind-btn" :class="{ active: indicatorTab === 'pad' }" @click="indicatorTab = 'pad'">三维情感 (PAD)</button>
+              </div>
+              <div v-show="indicatorTab === 'overview'" class="indicator-chart" ref="overviewChartRef"></div>
+              <div v-show="indicatorTab === 'discrete'" class="indicator-chart" ref="discreteChartRef"></div>
+              <div v-show="indicatorTab === 'va'" class="indicator-chart" ref="vaChartRef"></div>
+              <div v-show="indicatorTab === 'pad'" class="indicator-chart" ref="padChartRef"></div>
             </div>
           </div>
         </div>
@@ -95,29 +91,31 @@
 
         <GlobalStats :stats="globalStats" @refresh="refreshStats" />
 
-        <div class="face-list">
+        <!-- 人脸切换 -->
+        <div class="face-switcher" v-if="currentFaces.length > 0">
           <div class="card-header">
-            <h3>当前检测人脸</h3>
+            <h3>检测人脸</h3>
             <span class="face-count">{{ currentFaces.length }} 人</span>
           </div>
-          <div class="face-items">
-            <div v-for="(face, index) in currentFaces" :key="index" class="face-item" @click="selectFace(face, index)">
-              <div class="face-info">
-                <div class="face-id">人脸 {{ index + 1 }}</div>
-                <div class="emotion-tag" :class="getEmotionClass(face)">{{ getMainEmotion(face) }}</div>
-              </div>
-              <div class="face-meta">
-                <div class="confidence">{{ getConfidence(face) }}%</div>
-                <div class="va-mini" v-if="face.valence !== undefined">
-                  V:{{ face.valence?.toFixed(2) }} A:{{ face.arousal?.toFixed(2) }}
-                </div>
-              </div>
-            </div>
-            <div v-if="currentFaces.length === 0" class="no-faces">未检测到人脸</div>
+          <div class="face-switch-btns">
+            <button
+              v-for="(face, index) in currentFaces" :key="index"
+              class="face-switch-btn" :class="{ active: selectedFaceIndex === index }"
+              @click="selectedFaceIndex = index"
+            >
+              <span class="fsb-label">人脸 {{ index + 1 }}</span>
+              <span class="fsb-emotion" :class="getEmotionClass(face)">{{ getMainEmotion(face) }}</span>
+              <span class="fsb-conf">{{ getConfidence(face) }}%</span>
+            </button>
           </div>
         </div>
-
-        <FaceDetail v-if="selectedFace" v-model="showFaceDetail" :face-data="selectedFace" />
+        <div class="face-switcher" v-else>
+          <div class="card-header">
+            <h3>检测人脸</h3>
+            <span class="face-count">0 人</span>
+          </div>
+          <div style="padding:20px;text-align:center;color:#b2bec3;font-size:13px">未检测到人脸</div>
+        </div>
       </div>
     </div>
   </div>
@@ -131,7 +129,6 @@ import { useFaceStore } from '../store/modules/faceStore';
 import { useSystemStore } from '../store/modules/systemStore';
 import FaceCanvas from '../components/FaceCanvas.vue';
 import GlobalStats from '../components/GlobalStats.vue';
-import FaceDetail from '../components/FaceDetail.vue';
 
 const route = useRoute();
 const faceStore = useFaceStore();
@@ -141,8 +138,7 @@ const isRunning = ref(false);
 const cameraId = ref('');
 const cameras = ref([]);
 const currentFaces = ref([]);
-const selectedFace = ref(null);
-const showFaceDetail = ref(false);
+const selectedFaceIndex = ref(0);
 
 const globalStats = computed(() => faceStore.globalStats);
 
@@ -154,13 +150,15 @@ const emotionData = reactive({
 const trendData = reactive({ times: [], values: [] });
 
 // 情绪评价指标
-const indicatorTab = ref('discrete');
+const indicatorTab = ref('overview');
 const discreteChartRef = ref(null);
 const vaChartRef = ref(null);
 const padChartRef = ref(null);
+const overviewChartRef = ref(null);
 let discreteChart = null;
 let vaChart = null;
 let padChart = null;
+let overviewChart = null;
 
 // VA 历史数据（最近 30 个点）
 const vaHistory = reactive({ times: [], valence: [], arousal: [] });
@@ -247,7 +245,8 @@ const initDiscreteChart = () => {
 
 const updateDiscreteChart = () => {
   if (!discreteChart) return;
-  const face = currentFaces.value.length > 0 ? currentFaces.value[0] : null;
+  const idx = Math.min(selectedFaceIndex.value, currentFaces.value.length - 1);
+  const face = currentFaces.value.length > 0 ? currentFaces.value[idx] : null;
   const expressions = face?.expressions || {};
 
   // 固定顺序，颜色不变
@@ -257,7 +256,8 @@ const updateDiscreteChart = () => {
   const colors = order.map(k => emotionColors[k]);
 
   discreteChart.setOption({
-    grid: { left: 60, right: 50, top: 10, bottom: 10 },
+    animation: false,
+    grid: { left: 60, right: 50, top: 10, bottom: 30 },
     xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
     yAxis: { type: 'category', data: labels, inverse: true, axisLabel: { fontSize: 12, fontWeight: 600 } },
     series: [{
@@ -341,10 +341,48 @@ const updatePADChart = () => {
   }, true);
 };
 
+// 整体情绪分布图（所有人脸的情绪汇总）
+const initOverviewChart = () => {
+  if (!overviewChartRef.value) return;
+  if (overviewChart) overviewChart.dispose();
+  overviewChart = echarts.init(overviewChartRef.value);
+  updateOverviewChart();
+};
+
+const updateOverviewChart = () => {
+  if (!overviewChart) return;
+  // 汇总所有人脸的主导情绪
+  const dist = { happy: 0, neutral: 0, sad: 0, angry: 0, surprised: 0, fearful: 0, disgusted: 0, contempt: 0 };
+  currentFaces.value.forEach(face => {
+    const em = face.dominant_emotion;
+    if (em && dist[em] !== undefined) dist[em]++;
+  });
+  const total = currentFaces.value.length || 1;
+
+  const order = ['happy', 'neutral', 'sad', 'angry', 'surprised', 'fearful', 'disgusted', 'contempt'];
+  const labels = order.map(k => emotionLabels[k]);
+  const values = order.map(k => Math.round((dist[k] / total) * 100));
+  const colors = order.map(k => emotionColors[k]);
+
+  overviewChart.setOption({
+    grid: { left: 60, right: 50, top: 10, bottom: 30 },
+    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
+    yAxis: { type: 'category', data: labels, inverse: true, axisLabel: { fontSize: 12, fontWeight: 600 } },
+    series: [{
+      type: 'bar',
+      data: values.map((v, i) => ({ value: v, itemStyle: { color: colors[i] } })),
+      barWidth: 16,
+      label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11, fontWeight: 'bold' }
+    }]
+  }, true);
+};
+
 // 人脸数据更新时同步更新图表
 const updateIndicatorCharts = (faces) => {
   if (faces.length === 0) return;
-  const face = faces[0]; // 取第一个人脸
+  // 使用选中的人脸，默认第一个
+  const idx = Math.min(selectedFaceIndex.value, faces.length - 1);
+  const face = faces[idx];
 
   // 更新 VA 历史
   const now = new Date();
@@ -362,7 +400,8 @@ const updateIndicatorCharts = (faces) => {
   padValues.dominance = face.dominance ?? 0;
 
   // 刷新当前可见的图表
-  if (indicatorTab.value === 'discrete') updateDiscreteChart();
+  if (indicatorTab.value === 'overview') updateOverviewChart();
+  else if (indicatorTab.value === 'discrete') updateDiscreteChart();
   else if (indicatorTab.value === 'va') updateVAChart();
   else if (indicatorTab.value === 'pad') updatePADChart();
 };
@@ -370,25 +409,12 @@ const updateIndicatorCharts = (faces) => {
 // 切换 tab 时初始化对应图表
 watch(indicatorTab, () => {
   nextTick(() => {
-    if (indicatorTab.value === 'discrete') initDiscreteChart();
+    if (indicatorTab.value === 'overview') initOverviewChart();
+    else if (indicatorTab.value === 'discrete') initDiscreteChart();
     else if (indicatorTab.value === 'va') initVAChart();
     else if (indicatorTab.value === 'pad') initPADChart();
   });
 });
-
-const selectFace = (face, index) => {
-  selectedFace.value = {
-    id: face.face_id || `face-${index}-${Date.now()}`,
-    timestamp: Date.now(),
-    ...face,
-    valence: face.valence ?? 0,
-    arousal: face.arousal ?? 0,
-    pleasure: face.pleasure ?? face.valence ?? 0,
-    pad_arousal: face.pad_arousal ?? face.arousal ?? 0,
-    dominance: face.dominance ?? 0,
-  };
-  showFaceDetail.value = true;
-};
 
 const getMainEmotion = (face) => {
   if (face.dominant_emotion) return emotionMap[face.dominant_emotion] || face.dominant_emotion;
@@ -472,13 +498,14 @@ onMounted(async () => {
   systemStore.initSystem();
   startDetection();
   // 初始化默认图表
-  nextTick(() => initDiscreteChart());
+  nextTick(() => initOverviewChart());
 });
 
 onUnmounted(() => {
   if (discreteChart) discreteChart.dispose();
   if (vaChart) vaChart.dispose();
   if (padChart) padChart.dispose();
+  if (overviewChart) overviewChart.dispose();
 });
 </script>
 
@@ -554,9 +581,15 @@ onUnmounted(() => {
 
 /* 情绪评价指标 */
 .indicator-tabs { padding: 0 16px 16px; }
-.indicator-tabs :deep(.el-tabs__header) { margin-bottom: 12px; }
-.indicator-tabs :deep(.el-tabs__item) { font-size: 13px; font-weight: 600; }
-.indicator-chart { height: 260px; width: 100%; }
+.indicator-btns { display: flex; gap: 6px; margin-bottom: 12px; padding-top: 12px; flex-wrap: wrap; }
+.ind-btn {
+  padding: 6px 14px; border: 1.5px solid #eef1ff; border-radius: 20px;
+  background: white; font-size: 12px; font-weight: 600; color: #b2bec3;
+  cursor: pointer; transition: all 0.2s ease;
+}
+.ind-btn:hover { border-color: #6c8ef0; color: #6c8ef0; }
+.ind-btn.active { background: #6c8ef0; border-color: #6c8ef0; color: white; }
+.indicator-chart { height: 300px; width: 100%; }
 
 .side-panel { display: flex; flex-direction: column; gap: 16px; }
 
@@ -581,6 +614,25 @@ onUnmounted(() => {
 .thumb-type { font-size: 11px; color: #b2bec3; }
 .thumb-badge { font-size: 10px; font-weight: 700; color: var(--primary); background: white; padding: 2px 8px; border-radius: 10px; flex-shrink: 0; }
 .no-cameras { text-align: center; padding: 20px; color: #b2bec3; font-size: 13px; }
+
+/* 人脸切换 */
+.face-switcher {
+  background: white; border-radius: 14px;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08);
+  border: 1px solid rgba(108,142,240,0.06); overflow: hidden;
+}
+.face-switch-btns { padding: 8px; }
+.face-switch-btn {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 10px 12px; border: 1.5px solid #eef1ff; border-radius: 10px;
+  margin-bottom: 6px; cursor: pointer; transition: all 0.2s ease;
+  background: #fafbff; font-size: 13px;
+}
+.face-switch-btn:hover { border-color: #6c8ef0; background: #eef1ff; }
+.face-switch-btn.active { border-color: #6c8ef0; background: #eef1ff; box-shadow: 0 2px 8px rgba(108,142,240,0.15); }
+.fsb-label { font-weight: 700; color: #2d3436; }
+.fsb-emotion { font-size: 11px; font-weight: 600; }
+.fsb-conf { margin-left: auto; font-weight: 800; color: #00b894; font-size: 12px; }
 
 /* 人脸列表 */
 .face-list {
