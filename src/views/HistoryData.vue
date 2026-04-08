@@ -162,74 +162,76 @@
         </el-form>
       </div>
 
-      <div class="video-playback-area" v-if="playingVideo">
-        <div class="video-playback-grid">
-          <!-- 左：视频播放器 -->
-          <div class="video-player-card">
+      <div class="video-main-grid">
+        <!-- 左侧：视频 + 情绪指标 -->
+        <div class="video-left">
+          <div class="video-player-card" v-if="playingVideo">
             <div class="card-header">
               <h3>{{ playingVideo.camera_name || playingVideo.camera_id }}</h3>
               <span style="font-size:12px;color:#b2bec3">{{ formatTime(playingVideo.start_time) }} · {{ playingVideo.duration }}秒</span>
             </div>
             <div class="video-player-wrap">
               <video ref="videoPlayerRef" :src="playingVideo.url" controls autoplay
-                @play="onVideoPlay" @timeupdate="onVideoTimeUpdate" @loadeddata="onVideoLoaded"
-                style="width:100%;max-height:420px;background:#000;border-radius:8px"></video>
+                @timeupdate="onVideoTimeUpdate"
+                style="width:100%;height:600px;background:#000;border-radius:8px;object-fit:contain"></video>
             </div>
           </div>
-          <!-- 右：人脸情绪数据面板 -->
-          <div class="video-face-panel">
+          <div v-else class="video-player-card">
+            <div style="padding:60px;text-align:center;color:#b2bec3">请从右侧选择一段视频</div>
+          </div>
+
+          <!-- 人脸切换 -->
+          <div class="vp-face-switch" v-if="videoCurrentFaces.length > 0">
+            <span style="font-size:12px;font-weight:700;color:#636e72;margin-right:8px">人脸:</span>
+            <button v-for="(f, i) in videoCurrentFaces" :key="i"
+              class="vf-btn" :class="{ active: videoFaceIdx === i }" @click="videoFaceIdx = i">
+              人脸 {{ i + 1 }} · {{ emotionLabel(f.dominant_emotion) }}
+            </button>
+          </div>
+
+          <!-- 情绪评价指标（跟实时检测一样的4个按钮） -->
+          <div class="vp-indicator-card">
             <div class="card-header">
-              <h3>情绪数据</h3>
-              <span class="face-count" v-if="videoCurrentFaces.length">{{ videoCurrentFaces.length }} 人</span>
+              <h3>情绪评价指标</h3>
             </div>
-            <!-- 人脸切换 -->
-            <div class="vf-switch" v-if="videoCurrentFaces.length > 1">
-              <button v-for="(f, i) in videoCurrentFaces" :key="i"
-                class="vf-btn" :class="{ active: videoFaceIdx === i }" @click="videoFaceIdx = i">
-                人脸 {{ i + 1 }}
-              </button>
+            <div class="vp-indicator-body">
+              <div class="indicator-btns">
+                <button class="ind-btn" :class="{ active: vpTab === 'overview' }" @click="vpTab = 'overview'">整体分布</button>
+                <button class="ind-btn" :class="{ active: vpTab === 'discrete' }" @click="vpTab = 'discrete'">离散情绪 (1D)</button>
+                <button class="ind-btn" :class="{ active: vpTab === 'va' }" @click="vpTab = 'va'">二维情感 (VA)</button>
+                <button class="ind-btn" :class="{ active: vpTab === 'pad' }" @click="vpTab = 'pad'">三维情感 (PAD)</button>
+              </div>
+              <div v-show="vpTab === 'overview'" class="vp-chart" ref="vpOverviewRef"></div>
+              <div v-show="vpTab === 'discrete'" class="vp-chart" ref="vpDiscreteRef"></div>
+              <div v-show="vpTab === 'va'" class="vp-chart" ref="vpVaRef"></div>
+              <div v-show="vpTab === 'pad'" class="vp-chart" ref="vpPadRef"></div>
             </div>
-            <!-- 当前人脸数据 -->
-            <div class="vf-data" v-if="videoActiveFace">
-              <div class="vf-row"><span class="vf-label">情绪</span><span class="vf-val emotion-tag" :class="videoActiveFace.dominant_emotion">{{ emotionLabel(videoActiveFace.dominant_emotion) }}</span></div>
-              <div class="vf-row"><span class="vf-label">置信度</span><span class="vf-val">{{ (videoActiveFace.confidence * 100).toFixed(1) }}%</span></div>
-              <div class="vf-section">离散情绪</div>
-              <div class="vf-bars">
-                <div v-for="(val, key) in videoActiveFace.expressions" :key="key" class="vf-bar-row">
-                  <span class="vf-bar-label">{{ emotionLabel(key) }}</span>
-                  <div class="vf-bar-track"><div class="vf-bar-fill" :style="{ width: (val*100)+'%', background: emotionColor(key) }"></div></div>
-                  <span class="vf-bar-pct">{{ (val*100).toFixed(0) }}%</span>
+          </div>
+        </div>
+
+        <!-- 右侧：视频列表 -->
+        <div class="video-right">
+          <div class="video-list-card">
+            <div class="card-header">
+              <h3>视频列表</h3>
+              <span class="face-count">{{ videoTotal }} 段</span>
+            </div>
+            <div class="video-list-scroll">
+              <div v-for="v in videoList" :key="v.id" class="vl-item" :class="{ active: playingVideo?.id === v.id }" @click="selectVideo(v)">
+                <div class="vl-icon">▶</div>
+                <div class="vl-info">
+                  <div class="vl-name">{{ v.camera_name || v.camera_id }}</div>
+                  <div class="vl-time">{{ formatTime(v.start_time) }}</div>
+                  <div class="vl-meta">{{ v.duration }}秒 · {{ v.resolution }}</div>
                 </div>
               </div>
-              <div class="vf-section">二维情感 (VA)</div>
-              <div class="vf-row"><span class="vf-label">效价 Valence</span><span class="vf-val">{{ videoActiveFace.valence?.toFixed(3) }}</span></div>
-              <div class="vf-row"><span class="vf-label">唤醒度 Arousal</span><span class="vf-val">{{ videoActiveFace.arousal?.toFixed(3) }}</span></div>
-              <div class="vf-section">三维情感 (PAD)</div>
-              <div class="vf-row"><span class="vf-label">愉悦度 Pleasure</span><span class="vf-val">{{ videoActiveFace.pleasure?.toFixed(3) }}</span></div>
-              <div class="vf-row"><span class="vf-label">唤醒度 Arousal</span><span class="vf-val">{{ videoActiveFace.pad_arousal?.toFixed(3) }}</span></div>
-              <div class="vf-row"><span class="vf-label">支配度 Dominance</span><span class="vf-val">{{ videoActiveFace.dominance?.toFixed(3) }}</span></div>
+              <div v-if="videoList.length === 0" style="padding:30px;text-align:center;color:#b2bec3;font-size:13px">暂无录制视频</div>
             </div>
-            <div v-else class="vf-empty">暂无人脸数据</div>
+            <div class="vl-pagination" v-if="videoTotal > videoPageSize">
+              <el-pagination small layout="prev, pager, next" v-model:current-page="videoPage" :page-size="videoPageSize" :total="videoTotal" @current-change="loadVideos"></el-pagination>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div class="video-grid">
-        <div v-for="v in videoList" :key="v.id" class="video-card" :class="{ active: playingVideo?.id === v.id }" @click="selectVideo(v)">
-          <div class="vc-icon">▶</div>
-          <div class="vc-info">
-            <div class="vc-name">{{ v.camera_name || v.camera_id }}</div>
-            <div class="vc-time">{{ formatTime(v.start_time) }}</div>
-            <div class="vc-meta">{{ v.duration }}秒 · {{ v.resolution }}</div>
-          </div>
-        </div>
-        <div v-if="videoList.length === 0" style="text-align:center;padding:40px;color:#b2bec3;grid-column:1/-1">
-          暂无录制视频
-        </div>
-      </div>
-
-      <div class="pagination" v-if="videoTotal > videoPageSize">
-        <el-pagination v-model:current-page="videoPage" :page-size="videoPageSize" layout="prev, pager, next" :total="videoTotal" @current-change="loadVideos"></el-pagination>
       </div>
     </template>
 
@@ -290,8 +292,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import * as echarts from 'echarts';
 import { faceApi } from '../api/face';
 import { devicesApi } from '../api/devices';
 import { videoApi } from '../api/video';
@@ -317,7 +320,7 @@ const historyMode = ref('data');
 const videoList = ref([]);
 const videoTotal = ref(0);
 const videoPage = ref(1);
-const videoPageSize = 12;
+const videoPageSize = 14;
 const videoFilter = reactive({ camera: '', date: '' });
 const playingVideo = ref(null);
 
@@ -327,6 +330,17 @@ const videoTimeline = ref([]);  // 按时间排序的人脸数据帧
 const videoCurrentFaces = ref([]);
 const videoFaceIdx = ref(0);
 const videoActiveFace = computed(() => videoCurrentFaces.value[videoFaceIdx.value] || null);
+
+// 视频回放情绪指标图表
+const vpTab = ref('overview');
+const vpOverviewRef = ref(null);
+const vpDiscreteRef = ref(null);
+const vpVaRef = ref(null);
+const vpPadRef = ref(null);
+let vpOverviewChart = null;
+let vpDiscreteChart = null;
+let vpVaChart = null;
+let vpPadChart = null;
 
 const emotionLabel = (key) => {
   const map = { neutral:'中性', happy:'开心', sad:'悲伤', angry:'愤怒', fearful:'恐惧', disgusted:'厌恶', surprised:'惊讶', contempt:'蔑视' };
@@ -358,32 +372,115 @@ const selectVideo = async (v) => {
   }
 };
 
-const onVideoLoaded = () => {};
-const onVideoPlay = () => {};
-
 const onVideoTimeUpdate = () => {
   if (!videoPlayerRef.value || videoTimeline.value.length === 0 || !playingVideo.value) return;
 
-  const currentTime = videoPlayerRef.value.currentTime; // 秒
+  const currentTime = videoPlayerRef.value.currentTime;
   const videoStartTs = playingVideo.value.start_ts;
   const currentTs = videoStartTs + currentTime * 1000;
 
-  // 找最近的帧数据
   let closest = null;
   let minDiff = Infinity;
   for (const frame of videoTimeline.value) {
     const diff = Math.abs(frame.timestamp - currentTs);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closest = frame;
-    }
+    if (diff < minDiff) { minDiff = diff; closest = frame; }
   }
 
-  if (closest && minDiff < 2000) { // 2秒内的数据算匹配
+  if (closest && minDiff < 2000) {
     videoCurrentFaces.value = closest.faces;
     if (videoFaceIdx.value >= closest.faces.length) videoFaceIdx.value = 0;
+    updateVpCharts();
   }
 };
+
+// ===== 视频回放图表 =====
+const eColors = { happy:'#67c23a', sad:'#409eff', angry:'#f56c6c', neutral:'#909399', fearful:'#e6a23c', surprised:'#17c6cf', disgusted:'#8e44ad', contempt:'#6c5ce7' };
+const eLabels = { happy:'开心', neutral:'中性', sad:'悲伤', angry:'愤怒', surprised:'惊讶', fearful:'恐惧', disgusted:'厌恶', contempt:'蔑视' };
+const eOrder = ['happy','neutral','sad','angry','surprised','fearful','disgusted','contempt'];
+
+const updateVpCharts = () => {
+  if (vpTab.value === 'overview') updateVpOverview();
+  else if (vpTab.value === 'discrete') updateVpDiscrete();
+  else if (vpTab.value === 'va') updateVpVa();
+  else if (vpTab.value === 'pad') updateVpPad();
+};
+
+const updateVpOverview = () => {
+  if (!vpOverviewRef.value) return;
+  if (!vpOverviewChart) vpOverviewChart = echarts.init(vpOverviewRef.value);
+  const dist = {};
+  eOrder.forEach(k => dist[k] = 0);
+  videoCurrentFaces.value.forEach(f => { if (f.dominant_emotion && dist[f.dominant_emotion] !== undefined) dist[f.dominant_emotion]++; });
+  const total = videoCurrentFaces.value.length || 1;
+  vpOverviewChart.setOption({
+    animation: false,
+    grid: { left: 60, right: 50, top: 10, bottom: 30 },
+    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
+    yAxis: { type: 'category', data: eOrder.map(k => eLabels[k]), inverse: true, axisLabel: { fontSize: 12, fontWeight: 600 } },
+    series: [{ type: 'bar', data: eOrder.map(k => ({ value: Math.round(dist[k]/total*100), itemStyle: { color: eColors[k] } })), barWidth: 16, label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11, fontWeight: 'bold' } }]
+  }, true);
+};
+
+const updateVpDiscrete = () => {
+  if (!vpDiscreteRef.value) return;
+  if (!vpDiscreteChart) vpDiscreteChart = echarts.init(vpDiscreteRef.value);
+  const face = videoActiveFace.value;
+  const expr = face?.expressions || {};
+  vpDiscreteChart.setOption({
+    animation: false,
+    grid: { left: 60, right: 50, top: 10, bottom: 30 },
+    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
+    yAxis: { type: 'category', data: eOrder.map(k => eLabels[k]), inverse: true, axisLabel: { fontSize: 12, fontWeight: 600 } },
+    series: [{ type: 'bar', data: eOrder.map(k => ({ value: Math.round((expr[k]||0)*100), itemStyle: { color: eColors[k] } })), barWidth: 16, label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11, fontWeight: 'bold' } }]
+  }, true);
+};
+
+const updateVpVa = () => {
+  if (!vpVaRef.value) return;
+  if (!vpVaChart) vpVaChart = echarts.init(vpVaRef.value);
+  const face = videoActiveFace.value;
+  const v = face?.valence ?? 0, a = face?.arousal ?? 0;
+  vpVaChart.setOption({
+    animation: false,
+    grid: { left: 55, right: 30, top: 40, bottom: 50 },
+    xAxis: { name: 'Valence', nameLocation: 'center', nameGap: 30, min: -1, max: 1, type: 'value', splitLine: { lineStyle: { type: 'dashed', color: '#e0e0e0' } } },
+    yAxis: { name: 'Arousal', nameLocation: 'center', nameGap: 40, min: -1, max: 1, type: 'value', splitLine: { lineStyle: { type: 'dashed', color: '#e0e0e0' } } },
+    graphic: [
+      { type: 'text', left: '72%', top: '8%', style: { text: '兴奋/开心', fill: '#67c23a', fontSize: 11 } },
+      { type: 'text', left: '8%', top: '8%', style: { text: '愤怒/恐惧', fill: '#f56c6c', fontSize: 11 } },
+      { type: 'text', left: '8%', bottom: '15%', style: { text: '悲伤/厌恶', fill: '#409eff', fontSize: 11 } },
+      { type: 'text', left: '72%', bottom: '15%', style: { text: '平静/满足', fill: '#909399', fontSize: 11 } },
+    ],
+    series: [{ type: 'scatter', symbolSize: 18, data: [[v, a]], itemStyle: { color: v >= 0 ? '#67c23a' : '#f56c6c', shadowBlur: 8 }, label: { show: true, formatter: `(${v.toFixed(2)}, ${a.toFixed(2)})`, position: 'top', fontSize: 11, fontWeight: 'bold' } }]
+  }, true);
+};
+
+const updateVpPad = () => {
+  if (!vpPadRef.value) return;
+  if (!vpPadChart) vpPadChart = echarts.init(vpPadRef.value);
+  const face = videoActiveFace.value;
+  const p = face?.pleasure ?? 0, a = face?.pad_arousal ?? 0, d = face?.dominance ?? 0;
+  vpPadChart.setOption({
+    animation: false,
+    radar: {
+      indicator: [
+        { name: `愉悦度\n${p.toFixed(2)}`, max: 1, min: -1 },
+        { name: `唤醒度\n${a.toFixed(2)}`, max: 1, min: -1 },
+        { name: `支配度\n${d.toFixed(2)}`, max: 1, min: -1 },
+      ],
+      radius: '60%', center: ['50%', '55%'],
+      splitArea: { areaStyle: { color: ['rgba(108,142,240,0.05)', 'rgba(108,142,240,0.1)'] } }
+    },
+    series: [{ type: 'radar', data: [{ value: [p, a, d], areaStyle: { color: 'rgba(108,142,240,0.25)' }, lineStyle: { color: '#6c8ef0', width: 2 }, itemStyle: { color: '#6c8ef0' } }] }]
+  }, true);
+};
+
+watch(vpTab, () => { nextTick(() => updateVpCharts()); });
+watch(videoFaceIdx, () => updateVpCharts());
+
+onUnmounted(() => {
+  [vpOverviewChart, vpDiscreteChart, vpVaChart, vpPadChart].forEach(c => { if (c) c.dispose(); });
+});
 
 const loadVideos = async () => {
   try {
@@ -767,40 +864,66 @@ onMounted(() => {
   box-shadow: 0 2px 20px rgba(108,142,240,0.08); border: 1px solid rgba(108,142,240,0.06);
 }
 .video-playback-area { margin-bottom: 20px; }
-.video-playback-grid { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+.video-main-grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: stretch; }
+.video-left { display: flex; flex-direction: column; gap: 16px; }
+.video-right { position: relative; }
 .video-player-card {
   background: white; border-radius: 14px; overflow: hidden;
   box-shadow: 0 2px 20px rgba(108,142,240,0.08); border: 1px solid rgba(108,142,240,0.06);
 }
 .video-player-wrap { padding: 12px; }
 
-/* 人脸数据面板 */
-.video-face-panel {
-  background: white; border-radius: 14px; overflow: hidden;
-  box-shadow: 0 2px 20px rgba(108,142,240,0.08); border: 1px solid rgba(108,142,240,0.06);
-  max-height: 520px; overflow-y: auto;
-}
-.vf-switch { padding: 8px 12px; display: flex; gap: 4px; }
+/* 人脸切换条 */
+.vp-face-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .vf-btn {
   padding: 4px 12px; border: 1.5px solid #eef1ff; border-radius: 16px;
   background: white; font-size: 12px; font-weight: 600; color: #b2bec3; cursor: pointer;
 }
+.vf-btn:hover { border-color: #6c8ef0; color: #6c8ef0; }
 .vf-btn.active { background: #6c8ef0; border-color: #6c8ef0; color: white; }
-.vf-data { padding: 8px 14px; }
-.vf-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #f8f9fa; font-size: 12px; }
-.vf-label { color: #909399; font-weight: 600; }
-.vf-val { color: #2d3436; font-weight: 700; }
-.vf-section { font-size: 12px; font-weight: 700; color: #6c8ef0; margin: 10px 0 4px; padding-top: 6px; border-top: 1px solid #eef1ff; }
-.vf-bars { display: flex; flex-direction: column; gap: 4px; }
-.vf-bar-row { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.vf-bar-label { width: 36px; color: #909399; font-weight: 600; flex-shrink: 0; }
-.vf-bar-track { flex: 1; height: 8px; background: #f0f4ff; border-radius: 4px; overflow: hidden; }
-.vf-bar-fill { height: 100%; border-radius: 4px; }
-.vf-bar-pct { width: 32px; text-align: right; color: #2d3436; font-weight: 700; }
-.vf-empty { padding: 30px; text-align: center; color: #b2bec3; font-size: 13px; }
+
+/* 情绪指标卡片 */
+.vp-indicator-card {
+  background: white; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08); border: 1px solid rgba(108,142,240,0.06);
+}
+.vp-indicator-body { padding: 0 16px 16px; }
+.vp-indicator-body .indicator-btns { display: flex; gap: 6px; margin-bottom: 12px; padding-top: 12px; flex-wrap: wrap; }
+.vp-indicator-body .ind-btn {
+  padding: 6px 14px; border: 1.5px solid #eef1ff; border-radius: 20px;
+  background: white; font-size: 12px; font-weight: 600; color: #b2bec3;
+  cursor: pointer; transition: all 0.2s;
+}
+.vp-indicator-body .ind-btn:hover { border-color: #6c8ef0; color: #6c8ef0; }
+.vp-indicator-body .ind-btn.active { background: #6c8ef0; border-color: #6c8ef0; color: white; }
+.vp-chart { height: 280px; width: 100%; }
+
+/* 右侧视频列表 */
+.video-list-card {
+  background: white; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 2px 20px rgba(108,142,240,0.08); border: 1px solid rgba(108,142,240,0.06);
+  display: flex; flex-direction: column;
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+}
+.video-list-scroll { flex: 1; overflow-y: auto; padding: 8px; }
+.vl-pagination { padding: 8px 12px; border-top: 1px solid #eef1ff; text-align: center; flex-shrink: 0; }
+.vl-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1.5px solid #eef1ff; border-radius: 10px;
+  margin-bottom: 6px; cursor: pointer; transition: all 0.2s; background: #fafbff;
+}
+.vl-item:hover { border-color: #6c8ef0; background: #eef1ff; }
+.vl-item.active { border-color: #6c8ef0; background: #eef1ff; box-shadow: 0 2px 8px rgba(108,142,240,0.15); }
+.vl-icon { font-size: 18px; color: #6c8ef0; flex-shrink: 0; }
+.vl-info { flex: 1; min-width: 0; }
+.vl-name { font-size: 12px; font-weight: 700; color: #2d3436; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vl-time { font-size: 11px; color: #636e72; }
+.vl-meta { font-size: 10px; color: #b2bec3; }
 
 @media (max-width: 900px) {
-  .video-playback-grid { grid-template-columns: 1fr; }
+  .video-main-grid { grid-template-columns: 1fr; }
+  .video-list-card { position: static; max-height: 400px; }
+  .video-right { position: static; }
 }
 
 .video-grid {
