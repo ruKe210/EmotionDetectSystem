@@ -17,6 +17,10 @@ export default defineConfig({
         target: 'ws://localhost:8000',
         ws: true,
         changeOrigin: true
+      },
+      '/recordings': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
       }
     }
   },
