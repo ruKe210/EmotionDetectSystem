@@ -12,9 +12,9 @@ export const alertsApi = {
     return service.get(`/alerts/${alertId}`);
   },
 
-  // 处理告警
-  handleAlert: (alertId) => {
-    return service.post(`/alerts/${alertId}/handle`);
+  // 处理告警（可附带备注）
+  handleAlert: (alertId, note = '') => {
+    return service.post(`/alerts/${alertId}/handle`, { note });
   },
 
   // 忽略告警

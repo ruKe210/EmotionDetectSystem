@@ -21,6 +21,10 @@ export default defineConfig({
       '/recordings': {
         target: 'http://localhost:8000',
         changeOrigin: true
+      },
+      '/alert_images': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
       }
     }
   },

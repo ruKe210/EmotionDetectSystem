@@ -74,6 +74,7 @@
         <table class="fresh-table">
           <thead>
             <tr>
+              <th>截图</th>
               <th>告警信息</th>
               <th>设备</th>
               <th>时间</th>
@@ -85,24 +86,19 @@
           <tbody>
             <tr v-for="(alert, i) in filteredAlerts" :key="alert.id" :style="{ animationDelay: i * 0.05 + 's' }" class="table-row-anim">
               <td>
+                <img v-if="alert.face_image" :src="alert.face_image" class="alert-thumb" @click="viewAlert(alert)" />
+                <span v-else class="no-thumb">无截图</span>
+              </td>
+              <td>
                 <div class="alert-cell">
-                  <div class="alert-cell-icon" :class="alert.level">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                    </svg>
-                  </div>
                   <div>
                     <div class="alert-cell-title">{{ alert.title }}</div>
-                    <div class="alert-cell-sub">ID: #{{ alert.id }}</div>
+                    <div class="alert-cell-sub">{{ alert.description }}</div>
                   </div>
                 </div>
               </td>
               <td>
-                <div class="device-tag">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                  {{ alert.device }}
-                </div>
+                <div class="device-tag">{{ alert.device }}</div>
               </td>
               <td class="time-cell">{{ alert.time }}</td>
               <td>
@@ -117,14 +113,13 @@
               <td>
                 <div class="action-btns">
                   <button class="btn btn-info btn-sm" @click="viewAlert(alert)">查看</button>
-                  <button v-if="alert.rawStatus !== 'handled'" class="btn btn-success btn-sm" @click="handleAlert(alert)">处理</button>
+                  <button v-if="alert.rawStatus === 'pending'" class="btn btn-success btn-sm" @click="openHandleDialog(alert)">处理</button>
                   <button v-if="alert.rawStatus === 'pending'" class="btn btn-warning btn-sm" @click="ignoreAlert(alert)">忽略</button>
-                  <button v-if="alert.rawStatus === 'handled'" class="btn btn-secondary btn-sm">详情</button>
                 </div>
               </td>
             </tr>
             <tr v-if="filteredAlerts.length === 0">
-              <td colspan="6" class="empty-state">
+              <td colspan="7" class="empty-state">
                 <div class="empty-icon">🎉</div>
                 <div>暂无告警记录</div>
               </td>
@@ -133,6 +128,32 @@
         </table>
       </div>
     </div>
+
+    <!-- 告警详情/处理弹窗 -->
+    <el-dialog v-model="showAlertDialog" :title="dialogAlert ? '告警详情' : ''" width="600px">
+      <div v-if="dialogAlert" class="alert-detail">
+        <div class="ad-image" v-if="dialogAlert.face_image">
+          <img :src="dialogAlert.face_image" style="max-width:100%;border-radius:8px" />
+        </div>
+        <div class="ad-rows">
+          <div class="ad-row"><span class="ad-label">标题</span><span>{{ dialogAlert.title }}</span></div>
+          <div class="ad-row"><span class="ad-label">描述</span><span>{{ dialogAlert.description }}</span></div>
+          <div class="ad-row"><span class="ad-label">设备</span><span>{{ dialogAlert.device }}</span></div>
+          <div class="ad-row"><span class="ad-label">情绪</span><span>{{ dialogAlert.emotion || '-' }}</span></div>
+          <div class="ad-row"><span class="ad-label">持续时间</span><span>{{ dialogAlert.duration || 0 }}秒</span></div>
+          <div class="ad-row"><span class="ad-label">时间</span><span>{{ dialogAlert.time }}</span></div>
+          <div class="ad-row"><span class="ad-label">状态</span><span class="badge" :class="dialogAlert.badgeClass">{{ dialogAlert.status }}</span></div>
+          <div class="ad-row" v-if="dialogAlert.handle_note"><span class="ad-label">处理备注</span><span>{{ dialogAlert.handle_note }}</span></div>
+        </div>
+        <div v-if="dialogAlert.rawStatus === 'pending'" class="ad-handle">
+          <el-input v-model="handleNote" type="textarea" :rows="3" placeholder="输入处理备注（可选）" style="margin-bottom:12px"></el-input>
+          <div style="display:flex;gap:8px">
+            <el-button type="primary" @click="submitHandle">确认处理</el-button>
+            <el-button @click="showAlertDialog = false">取消</el-button>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -174,7 +195,11 @@ const loadAlerts = async () => {
     alerts.value = items.map(a => ({
       id: a.id,
       title: a.title,
+      description: a.description || '',
       device: a.device || '未知设备',
+      face_image: a.face_image || null,
+      emotion: a.emotion || '',
+      duration: a.duration || 0,
       time: formatDateTime(a.time),
       level: levelMap[a.level] || 'low',
       levelText: levelTextMap[a.level] || a.level,
@@ -182,6 +207,8 @@ const loadAlerts = async () => {
       rawStatus: a.status,
       badgeClass: badgeClassMap[a.status] || 'badge-warning',
       type: a.type,
+      handle_note: a.handle_note || '',
+      handled_by: a.handled_by || '',
     }));
   } catch (error) {
     console.error('加载告警失败:', error);
@@ -210,16 +237,34 @@ const filteredAlerts = computed(() => {
   });
 });
 
-const handleAlert = async (alert) => {
+const showAlertDialog = ref(false);
+const dialogAlert = ref(null);
+const handleNote = ref('');
+
+const openHandleDialog = (alert) => {
+  dialogAlert.value = alert;
+  handleNote.value = '';
+  showAlertDialog.value = true;
+};
+
+const viewAlert = (alert) => {
+  dialogAlert.value = alert;
+  handleNote.value = '';
+  showAlertDialog.value = true;
+};
+
+const submitHandle = async () => {
+  if (!dialogAlert.value) return;
   try {
-    await alertsApi.handleAlert(alert.id);
-    alert.rawStatus = 'handled';
-    alert.status = '已处理';
-    alert.badgeClass = 'badge-success';
+    await alertsApi.handleAlert(dialogAlert.value.id, handleNote.value);
+    dialogAlert.value.rawStatus = 'handled';
+    dialogAlert.value.status = '已处理';
+    dialogAlert.value.badgeClass = 'badge-success';
+    dialogAlert.value.handle_note = handleNote.value;
+    showAlertDialog.value = false;
     ElMessage.success('处理成功');
-  } catch (error) {
-    console.error('处理告警失败:', error);
-    ElMessage.error('操作失败');
+  } catch (e) {
+    ElMessage.error('处理失败');
   }
 };
 
@@ -235,8 +280,6 @@ const ignoreAlert = async (alert) => {
     ElMessage.error('操作失败');
   }
 };
-
-const viewAlert = (alert) => console.log('view', alert);
 
 const markAllRead = async () => {
   try {
@@ -453,6 +496,15 @@ onMounted(() => {
 
 .alert-cell-title { font-size: 13px; font-weight: 600; color: #2d3436; }
 .alert-cell-sub { font-size: 11px; color: #b2bec3; margin-top: 2px; }
+.alert-thumb {
+  width: 64px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #eef1ff;
+  cursor: pointer;
+}
+.no-thumb { font-size: 12px; color: #b2bec3; }
 
 .device-tag {
   display: inline-flex;
@@ -504,6 +556,17 @@ onMounted(() => {
 .empty-icon { font-size: 40px; margin-bottom: 12px; }
 
 .table-row-anim { animation: row-in 0.3s ease backwards; }
+.alert-detail { display: flex; flex-direction: column; gap: 12px; }
+.ad-rows { display: flex; flex-direction: column; gap: 8px; }
+.ad-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  align-items: start;
+  font-size: 13px;
+}
+.ad-label { color: #636e72; }
+.ad-handle { margin-top: 6px; }
 
 @keyframes row-in {
   from { opacity: 0; transform: translateX(-10px); }
