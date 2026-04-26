@@ -23,6 +23,11 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",
-    "vite": "^6.0.3"
-  }
+    "vite": "^6.4.2"
+  },
+  "description": "这是一个基于 Vue.js 的人脸和情绪识别前端系统，与后端服务配合使用，实现实时人脸检测、情绪识别和数据分析功能。",
+  "main": "vite.config.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

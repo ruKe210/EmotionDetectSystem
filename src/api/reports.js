@@ -22,4 +22,9 @@ export const reportsApi = {
     return service.get('/reports/trend', { params });
   },
 
+  // 获取智能分析
+  getIntelligentAnalysis: (params) => {
+    return service.get('/reports/intelligent-analysis', { params });
+  },
+
 };
