@@ -1,5 +1,5 @@
 <template>
-  <div class="reports-page">
+  <div class="reports-page" ref="reportExportRef">
     <!-- 页面头部 -->
     <div class="page-header">
       <div class="page-header-left">
@@ -16,13 +16,9 @@
         </div>
       </div>
       <div class="page-actions">
-        <button class="btn btn-secondary btn-sm" @click="exportPDF">
+        <button class="btn btn-primary btn-sm" :disabled="exportingPdf" @click="exportPDF">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          导出PDF
-        </button>
-        <button class="btn btn-primary" @click="generateReport">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          生成报表
+          {{ exportingPdf ? '导出中...' : '导出报表PDF' }}
         </button>
       </div>
     </div>
@@ -50,12 +46,41 @@
             </div>
           </div>
           <div class="config-item">
-            <label>开始日期</label>
-            <input type="date" class="form-control" v-model="startDate" />
-          </div>
-          <div class="config-item">
-            <label>结束日期</label>
-            <input type="date" class="form-control" v-model="endDate" />
+            <label>统计时段</label>
+            <el-date-picker
+              v-if="reportType === 'daily'"
+              v-model="dayValue"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择某一天"
+              class="w-full"
+            />
+            <el-date-picker
+              v-else-if="reportType === 'weekly'"
+              v-model="weekValue"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="选择该周任意一天"
+              class="w-full"
+            />
+            <el-date-picker
+              v-else-if="reportType === 'monthly'"
+              v-model="monthValue"
+              type="month"
+              value-format="YYYY-MM"
+              placeholder="选择某一月"
+              class="w-full"
+            />
+            <el-date-picker
+              v-else
+              v-model="customRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              class="w-full"
+            />
           </div>
           <div class="config-item">
             <label>设备选择</label>
@@ -91,7 +116,7 @@
             <span class="header-dot" style="background: var(--primary)"></span>
             情绪占比分布
           </h4>
-          <span class="period-tag">{{ reportType === 'daily' ? '今天' : reportType === 'weekly' ? '本周' : '本月' }}</span>
+          <span class="period-tag">{{ periodLabel }}</span>
         </div>
         <div class="card-body">
           <div class="donut-chart-wrap">
@@ -162,7 +187,7 @@
         <div class="card-header">
           <h4>
             <span class="header-dot" style="background: var(--lavender)"></span>
-            近7日识别趋势
+            {{ trendTitle }}
           </h4>
           <div class="legend-tabs">
             <span class="legend-chip" style="background: var(--primary-light); color: var(--primary)">
@@ -194,8 +219,8 @@
               <circle v-for="(pt, i) in linePointsArr" :key="i" :cx="pt.x" :cy="pt.y" r="4" fill="white" stroke="#6c8ef0" stroke-width="2"/>
             </svg>
             <!-- X轴标签 -->
-            <div class="x-axis">
-              <span v-for="d in weekDays" :key="d">{{ d }}</span>
+            <div class="x-axis" :style="{ gridTemplateColumns: `repeat(${Math.max(trendAxisLabels.length, 1)}, minmax(0, 1fr))` }">
+              <span v-for="(d, i) in trendAxisLabels" :key="i">{{ d }}</span>
             </div>
           </div>
         </div>
@@ -205,15 +230,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ElMessage } from 'element-plus';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { reportsApi } from '../api/reports';
 import { devicesApi } from '../api/devices';
 
 const reportType = ref('daily');
-const startDate = ref('');
-const endDate = ref('');
+const dayValue = ref('');
+const weekValue = ref('');
+const monthValue = ref('');
+const customRange = ref([]);
 const selectedDevice = ref('');
 const deviceOptions = ref([]);
+const reportExportRef = ref(null);
+const exportingPdf = ref(false);
 
 const emotionNameMap = {
   happy: '快乐', sad: '悲伤', angry: '愤怒', neutral: '中性',
@@ -233,6 +265,7 @@ const reportTypes = [
   { label: '日报表', value: 'daily' },
   { label: '周报表', value: 'weekly' },
   { label: '月报表', value: 'monthly' },
+  { label: '自定义', value: 'custom' },
 ];
 
 const summaryData = ref([
@@ -252,6 +285,62 @@ const weekDays = ref([]);
 const weekData = ref([]);
 const alertDataWeek = ref([]);
 
+const toYmd = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const setupDefaultPeriod = () => {
+  const now = new Date();
+  dayValue.value = toYmd(now);
+  weekValue.value = toYmd(now);
+  monthValue.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  customRange.value = [toYmd(new Date(now.getTime() - 6 * 24 * 3600 * 1000)), toYmd(now)];
+};
+
+const periodLabel = computed(() => {
+  if (reportType.value === 'daily') return dayValue.value ? `${dayValue.value}（日报）` : '日报';
+  if (reportType.value === 'weekly') return weekValue.value ? `${weekValue.value} 所在周` : '周报';
+  if (reportType.value === 'monthly') return monthValue.value ? `${monthValue.value}（月报）` : '月报';
+  if (customRange.value?.length === 2) return `${customRange.value[0]} ~ ${customRange.value[1]}`;
+  return '自定义时段';
+});
+
+const trendTitle = computed(() => {
+  if (reportType.value === 'daily') return '近7日识别趋势';
+  if (reportType.value === 'weekly') return '本周逐日识别趋势';
+  if (reportType.value === 'monthly') return '本月逐日识别趋势';
+  return '时段内逐日识别趋势';
+});
+
+const trendAxisLabels = computed(() => {
+  const labels = weekDays.value || [];
+  const maxShown = 8;
+  if (labels.length <= maxShown) return labels;
+  const step = Math.ceil(labels.length / maxShown);
+  return labels.map((label, idx) => (idx % step === 0 || idx === labels.length - 1 ? label : ''));
+});
+
+const buildReportParams = () => {
+  const params = { reportType: reportType.value };
+  if (selectedDevice.value) params.device = selectedDevice.value;
+
+  if (reportType.value === 'daily' && dayValue.value) {
+    params.startDate = dayValue.value;
+  } else if (reportType.value === 'weekly' && weekValue.value) {
+    params.startDate = weekValue.value;
+  } else if (reportType.value === 'monthly' && monthValue.value) {
+    params.startDate = monthValue.value;
+  } else if (reportType.value === 'custom' && customRange.value?.length === 2) {
+    params.startDate = customRange.value[0];
+    params.endDate = customRange.value[1];
+  }
+  return params;
+};
+
 // 加载设备列表
 const loadDevices = async () => {
   try {
@@ -265,12 +354,7 @@ const loadDevices = async () => {
 // 加载摘要数据
 const loadSummary = async () => {
   try {
-    const params = { reportType: reportType.value };
-    if (startDate.value) params.startDate = startDate.value;
-    if (endDate.value) params.endDate = endDate.value;
-    if (selectedDevice.value) params.device = selectedDevice.value;
-
-    const res = await reportsApi.getSummary(params);
+    const res = await reportsApi.getSummary(buildReportParams());
     const data = res.data;
 
     summaryData.value[0].value = data.total.toLocaleString();
@@ -299,12 +383,7 @@ const loadSummary = async () => {
 // 加载情绪分布
 const loadEmotionDistribution = async () => {
   try {
-    const params = {};
-    if (startDate.value) params.startDate = startDate.value;
-    if (endDate.value) params.endDate = endDate.value;
-    if (selectedDevice.value) params.device = selectedDevice.value;
-
-    const res = await reportsApi.getEmotionDistribution(params);
+    const res = await reportsApi.getEmotionDistribution(buildReportParams());
     const items = res.data || [];
     emotionData.value = items.map(item => ({
       name: emotionNameMap[item.emotion] || item.emotion,
@@ -320,9 +399,7 @@ const loadEmotionDistribution = async () => {
 // 加载每小时统计
 const loadHourly = async () => {
   try {
-    const params = {};
-    if (selectedDevice.value) params.device = selectedDevice.value;
-    const res = await reportsApi.getHourlyStats(params);
+    const res = await reportsApi.getHourlyStats(buildReportParams());
     const items = res.data || [];
     const colors = [
       'linear-gradient(to top, #6c8ef0, #a29bfe)',
@@ -344,15 +421,18 @@ const loadHourly = async () => {
 // 加载趋势
 const loadTrend = async () => {
   try {
-    const params = { days: 7 };
-    if (selectedDevice.value) params.device = selectedDevice.value;
+    const params = buildReportParams();
+    params.days = reportType.value === 'daily' ? 7 : 31;
     const res = await reportsApi.getTrend(params);
     const data = res.data;
 
     weekDays.value = (data.dates || []).map(d => {
       const date = new Date(d);
-      const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-      return days[date.getDay()];
+      if (reportType.value === 'daily') {
+        const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        return days[date.getDay()];
+      }
+      return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     });
     weekData.value = data.total || [];
     alertDataWeek.value = data.alerts || [];
@@ -382,9 +462,11 @@ const maxWeekData = computed(() => Math.max(...weekData.value, 1));
 
 const linePointsArr = computed(() => {
   if (weekData.value.length === 0) return [];
-  const spacing = 600 / Math.max(weekData.value.length - 1, 1);
+  const left = 30;
+  const right = 570;
+  const spacing = (right - left) / Math.max(weekData.value.length - 1, 1);
   return weekData.value.map((v, i) => ({
-    x: i * spacing + 30,
+    x: left + i * spacing,
     y: 180 - (v / (maxWeekData.value * 1.2) * 160)
   }));
 });
@@ -405,9 +487,11 @@ const areaPath = computed(() => {
 const alertPoints = computed(() => {
   if (alertDataWeek.value.length === 0) return '';
   const maxAlert = Math.max(...alertDataWeek.value, 1);
-  const spacing = 600 / Math.max(alertDataWeek.value.length - 1, 1);
+  const left = 30;
+  const right = 570;
+  const spacing = (right - left) / Math.max(alertDataWeek.value.length - 1, 1);
   return alertDataWeek.value.map((v, i) => {
-    const x = i * spacing + 30;
+    const x = left + i * spacing;
     const y = 180 - (v / (maxAlert * 1.5) * 80);
     return `${x},${y}`;
   }).join(' ');
@@ -420,14 +504,72 @@ const loadAll = () => {
   loadTrend();
 };
 
-const generateReport = () => loadAll();
-const exportPDF = () => console.log('export pdf');
+const exportPDF = async () => {
+  if (!reportExportRef.value || exportingPdf.value) return;
+  try {
+    exportingPdf.value = true;
+    await nextTick();
+    const canvas = await html2canvas(reportExportRef.value, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      windowWidth: reportExportRef.value.scrollWidth,
+      windowHeight: reportExportRef.value.scrollHeight,
+      onclone: (clonedDoc) => {
+        // html2canvas 在部分 linear-gradient 上会触发 addColorStop 非有限值错误，导出时降级为纯色
+        const root = clonedDoc.querySelector('.reports-page');
+        if (!root) return;
 
-watch([reportType, selectedDevice], () => {
+        root.querySelectorAll('.bar-fill').forEach((el) => {
+          el.style.background = '#6c8ef0';
+        });
+        root.querySelectorAll('.type-btn.active').forEach((el) => {
+          el.style.background = '#e17055';
+          el.style.borderColor = '#e17055';
+        });
+        root.querySelectorAll('.page-icon').forEach((el) => {
+          el.style.background = '#e17055';
+        });
+      },
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 8;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let remaining = imgHeight;
+    let yPos = margin;
+    pdf.addImage(imgData, 'JPEG', margin, yPos, imgWidth, imgHeight);
+    remaining -= (pageHeight - margin * 2);
+
+    while (remaining > 0) {
+      pdf.addPage();
+      yPos = margin - (imgHeight - remaining);
+      pdf.addImage(imgData, 'JPEG', margin, yPos, imgWidth, imgHeight);
+      remaining -= (pageHeight - margin * 2);
+    }
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    pdf.save(`情绪统计报表_${ts}.pdf`);
+    ElMessage.success('PDF 导出成功');
+  } catch (error) {
+    console.error('导出 PDF 失败:', error);
+    ElMessage.error('PDF 导出失败');
+  } finally {
+    exportingPdf.value = false;
+  }
+};
+
+watch([reportType, selectedDevice, dayValue, weekValue, monthValue, customRange], () => {
   loadAll();
 });
 
 onMounted(() => {
+  setupDefaultPeriod();
   loadDevices();
   loadAll();
 });
@@ -478,6 +620,7 @@ onMounted(() => {
 }
 
 .config-item { display: flex; flex-direction: column; gap: 8px; }
+.w-full { width: 100%; }
 
 .config-item label {
   font-size: 12px;
@@ -702,9 +845,9 @@ onMounted(() => {
 }
 
 .x-axis {
-  display: flex;
-  justify-content: space-around;
-  padding: 0 50px;
+  display: grid;
+  gap: 0;
+  padding: 0 30px;
 }
 
 .x-axis span {

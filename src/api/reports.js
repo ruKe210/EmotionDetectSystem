@@ -22,8 +22,4 @@ export const reportsApi = {
     return service.get('/reports/trend', { params });
   },
 
-  // 导出PDF报表
-  exportPdf: (params) => {
-    return service.get('/reports/export-pdf', { params });
-  },
 };
